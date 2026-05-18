@@ -79,6 +79,25 @@ type APIKeyAlias struct {
 	UpdatedAtMS int64  `json:"updatedAtMs"`
 }
 
+type APIKeyLimit struct {
+	APIKeyHash  string  `json:"apiKeyHash"`
+	LimitType   string  `json:"limitType"`
+	LimitValue  float64 `json:"limitValue"`
+	WindowDays  int     `json:"windowDays"`
+	Enabled     bool    `json:"enabled"`
+	Priority    bool    `json:"priority"`
+	SoftLimit   bool    `json:"softLimit"`
+	UpdatedAtMS int64   `json:"updatedAtMs"`
+}
+
+type APIKeyLimitWithUsage struct {
+	APIKeyLimit
+	UsedTokens     int64   `json:"usedTokens"`
+	UsedCost       float64 `json:"usedCost"`
+	LimitReached   bool    `json:"limitReached"`
+	SoftLimitOnly  bool    `json:"softLimitOnly"`
+}
+
 type Store struct {
 	db *sql.DB
 }
@@ -178,6 +197,16 @@ func (s *Store) init() error {
 			alias text not null,
 			updated_at_ms integer not null
 		)`,
+		`create table if not exists api_key_limits (
+			api_key_hash text primary key,
+			limit_type text not null default 'token',
+			limit_value real not null,
+			window_days integer not null default 7,
+			enabled integer not null default 1,
+			priority integer not null default 0,
+			soft_limit integer not null default 0,
+			updated_at_ms integer not null
+		)`,
 	}
 	for _, statement := range statements {
 		if _, err := s.db.Exec(statement); err != nil {
@@ -186,6 +215,55 @@ func (s *Store) init() error {
 	}
 	if err := s.ensureUsageEventSnapshotColumns(); err != nil {
 		return err
+	}
+	if err := s.ensureAPIKeyLimitColumns(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Store) ensureAPIKeyLimitColumns() error {
+	rows, err := s.db.Query(`pragma table_info(api_key_limits)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	existing := map[string]struct{}{}
+	for rows.Next() {
+		var cid int
+		var name string
+		var columnType string
+		var notNull int
+		var defaultValue any
+		var pk int
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &pk); err != nil {
+			return err
+		}
+		existing[name] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	columns := []struct {
+		name       string
+		definition string
+	}{
+		{name: "priority", definition: "integer not null default 0"},
+		{name: "soft_limit", definition: "integer not null default 0"},
+	}
+	for _, column := range columns {
+		if _, ok := existing[column.name]; ok {
+			continue
+		}
+		if _, err := s.db.Exec(fmt.Sprintf(
+			`alter table api_key_limits add column %s %s`,
+			column.name,
+			column.definition,
+		)); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -568,6 +646,190 @@ func (s *Store) DeleteAPIKeyAlias(ctx context.Context, apiKeyHash string) error 
 	}
 	_, err := s.db.ExecContext(ctx, `delete from api_key_aliases where api_key_hash = ?`, hash)
 	return err
+}
+
+func (s *Store) LoadAPIKeyLimits(ctx context.Context) ([]APIKeyLimit, error) {
+	rows, err := s.db.QueryContext(ctx, `select
+		api_key_hash, limit_type, limit_value, window_days, enabled, priority, soft_limit, updated_at_ms
+		from api_key_limits order by priority desc, updated_at_ms desc`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	limits := []APIKeyLimit{}
+	for rows.Next() {
+		var limit APIKeyLimit
+		var enabled, priority, softLimit int
+		if err := rows.Scan(
+			&limit.APIKeyHash,
+			&limit.LimitType,
+			&limit.LimitValue,
+			&limit.WindowDays,
+			&enabled,
+			&priority,
+			&softLimit,
+			&limit.UpdatedAtMS,
+		); err != nil {
+			return nil, err
+		}
+		limit.Enabled = enabled != 0
+		limit.Priority = priority != 0
+		limit.SoftLimit = softLimit != 0
+		limits = append(limits, limit)
+	}
+	return limits, rows.Err()
+}
+
+func (s *Store) UpsertAPIKeyLimit(ctx context.Context, limit APIKeyLimit) error {
+	hash := strings.ToLower(strings.TrimSpace(limit.APIKeyHash))
+	if !validAPIKeyHash(hash) {
+		return errors.New("valid apiKeyHash is required")
+	}
+	if limit.LimitType != "token" && limit.LimitType != "cost" {
+		return errors.New("limitType must be 'token' or 'cost'")
+	}
+	if limit.LimitValue <= 0 {
+		return errors.New("limitValue must be greater than 0")
+	}
+	if limit.WindowDays != 7 && limit.WindowDays != 30 {
+		return errors.New("windowDays must be 7 or 30")
+	}
+	enabled := 0
+	if limit.Enabled {
+		enabled = 1
+	}
+	priority := 0
+	if limit.Priority {
+		priority = 1
+	}
+	softLimit := 0
+	if limit.SoftLimit {
+		softLimit = 1
+	}
+	_, err := s.db.ExecContext(ctx, `insert into api_key_limits (
+		api_key_hash, limit_type, limit_value, window_days, enabled, priority, soft_limit, updated_at_ms
+	) values (?, ?, ?, ?, ?, ?, ?, ?)
+	on conflict(api_key_hash) do update set
+		limit_type = excluded.limit_type,
+		limit_value = excluded.limit_value,
+		window_days = excluded.window_days,
+		enabled = excluded.enabled,
+		priority = excluded.priority,
+		soft_limit = excluded.soft_limit,
+		updated_at_ms = excluded.updated_at_ms`,
+		hash,
+		limit.LimitType,
+		limit.LimitValue,
+		limit.WindowDays,
+		enabled,
+		priority,
+		softLimit,
+		time.Now().UnixMilli(),
+	)
+	return err
+}
+
+func (s *Store) DeleteAPIKeyLimit(ctx context.Context, apiKeyHash string) error {
+	hash := strings.ToLower(strings.TrimSpace(apiKeyHash))
+	if !validAPIKeyHash(hash) {
+		return errors.New("valid apiKeyHash is required")
+	}
+	_, err := s.db.ExecContext(ctx, `delete from api_key_limits where api_key_hash = ?`, hash)
+	return err
+}
+
+func (s *Store) getAPIKeyUsage(ctx context.Context, apiKeyHash string, windowDays int) (int64, float64, error) {
+	windowStartMS := time.Now().AddDate(0, 0, -windowDays).UnixMilli()
+	row := s.db.QueryRowContext(ctx, `select
+		coalesce(sum(ue.total_tokens), 0),
+		coalesce(sum(
+			(case when ue.input_tokens - case when ue.cached_tokens > ue.cache_tokens then ue.cached_tokens else ue.cache_tokens end > 0
+				then ue.input_tokens - case when ue.cached_tokens > ue.cache_tokens then ue.cached_tokens else ue.cache_tokens end
+				else 0 end) * coalesce(mp.prompt_per_1m, 0) / 1000000.0
+			+ (case when ue.cached_tokens > ue.cache_tokens then ue.cached_tokens else ue.cache_tokens end) * coalesce(mp.cache_per_1m, 0) / 1000000.0
+			+ ue.output_tokens * coalesce(mp.completion_per_1m, 0) / 1000000.0
+		), 0)
+		from usage_events ue
+		left join model_prices mp on ue.model = mp.model
+		where ue.api_key_hash = ?
+		and ue.timestamp_ms >= ?
+		and ue.failed = 0`,
+		apiKeyHash,
+		windowStartMS,
+	)
+	var totalTokens int64
+	var totalCost float64
+	if err := row.Scan(&totalTokens, &totalCost); err != nil {
+		return 0, 0, err
+	}
+	return totalTokens, totalCost, nil
+}
+
+func (s *Store) LoadAPIKeyLimitsWithUsage(ctx context.Context) ([]APIKeyLimitWithUsage, error) {
+	limits, err := s.LoadAPIKeyLimits(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]APIKeyLimitWithUsage, 0, len(limits))
+	for _, limit := range limits {
+		tokens, cost, err := s.getAPIKeyUsage(ctx, limit.APIKeyHash, limit.WindowDays)
+		if err != nil {
+			return nil, err
+		}
+		limitReached := limit.Enabled && (
+			(limit.LimitType == "token" && float64(tokens) >= limit.LimitValue) ||
+			(limit.LimitType == "cost" && cost >= limit.LimitValue))
+		result = append(result, APIKeyLimitWithUsage{
+			APIKeyLimit:   limit,
+			UsedTokens:    tokens,
+			UsedCost:      cost,
+			LimitReached:  limitReached,
+			SoftLimitOnly: limitReached && limit.SoftLimit,
+		})
+	}
+	return result, nil
+}
+
+func (s *Store) CheckAPIKeyLimit(ctx context.Context, apiKeyHash string) (APIKeyLimitWithUsage, bool, error) {
+	hash := strings.ToLower(strings.TrimSpace(apiKeyHash))
+	var limit APIKeyLimit
+	var enabled, priority, softLimit int
+	err := s.db.QueryRowContext(ctx, `select
+		api_key_hash, limit_type, limit_value, window_days, enabled, priority, soft_limit, updated_at_ms
+		from api_key_limits where api_key_hash = ?`, hash).Scan(
+		&limit.APIKeyHash,
+		&limit.LimitType,
+		&limit.LimitValue,
+		&limit.WindowDays,
+		&enabled,
+		&priority,
+		&softLimit,
+		&limit.UpdatedAtMS,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return APIKeyLimitWithUsage{}, false, nil
+	}
+	if err != nil {
+		return APIKeyLimitWithUsage{}, false, err
+	}
+	limit.Enabled = enabled != 0
+	limit.Priority = priority != 0
+	limit.SoftLimit = softLimit != 0
+	tokens, cost, err := s.getAPIKeyUsage(ctx, hash, limit.WindowDays)
+	if err != nil {
+		return APIKeyLimitWithUsage{}, false, err
+	}
+	limitReached := limit.Enabled && (
+		(limit.LimitType == "token" && float64(tokens) >= limit.LimitValue) ||
+		(limit.LimitType == "cost" && cost >= limit.LimitValue))
+	return APIKeyLimitWithUsage{
+		APIKeyLimit:   limit,
+		UsedTokens:    tokens,
+		UsedCost:      cost,
+		LimitReached:  limitReached,
+		SoftLimitOnly: limitReached && limit.SoftLimit,
+	}, true, nil
 }
 
 func normalizeAPIKeyAlias(alias APIKeyAlias, now int64) (APIKeyAlias, error) {

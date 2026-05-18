@@ -28,6 +28,7 @@ interface GeminiSectionProps {
   onEdit: (index: number) => void;
   onDelete: (index: number) => void;
   onToggle: (index: number, enabled: boolean) => void;
+  onSetLimit?: (apiKey: string) => void;
 }
 
 export function GeminiSection({
@@ -40,6 +41,7 @@ export function GeminiSection({
   onEdit,
   onDelete,
   onToggle,
+  onSetLimit,
 }: GeminiSectionProps) {
   const { t } = useTranslation();
   const actionsDisabled = disableControls || loading || isSwitching;
@@ -88,12 +90,24 @@ export function GeminiSection({
           actionsDisabled={actionsDisabled}
           getRowDisabled={(item) => hasDisableAllModelsRule(item.excludedModels)}
           renderExtraActions={(item, index) => (
-            <ToggleSwitch
-              label={t('ai_providers.config_toggle_label')}
-              checked={!hasDisableAllModelsRule(item.excludedModels)}
-              disabled={toggleDisabled}
-              onChange={(value) => void onToggle(index, value)}
-            />
+            <>
+              {onSetLimit && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => onSetLimit(item.apiKey)}
+                  disabled={actionsDisabled}
+                >
+                  {t('ai_providers.set_limit')}
+                </Button>
+              )}
+              <ToggleSwitch
+                label={t('ai_providers.config_toggle_label')}
+                checked={!hasDisableAllModelsRule(item.excludedModels)}
+                disabled={toggleDisabled}
+                onChange={(value) => void onToggle(index, value)}
+              />
+            </>
           )}
           renderContent={(item, index) => {
             const stats = getProviderTotalStats(

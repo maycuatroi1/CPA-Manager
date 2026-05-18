@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
   AmpcodeSection,
+  ApiKeyLimitModal,
   ClaudeSection,
   CodexSection,
   GeminiSection,
@@ -56,6 +57,7 @@ export function AiProvidersPage() {
   );
 
   const [configSwitchingKey, setConfigSwitchingKey] = useState<string | null>(null);
+  const [limitApiKey, setLimitApiKey] = useState<string | null>(null);
 
   const disableControls = connectionStatus !== 'connected';
   const isSwitching = Boolean(configSwitchingKey);
@@ -422,6 +424,7 @@ export function AiProvidersPage() {
             onEdit={(index) => openEditor(`/ai-providers/gemini/${index}`)}
             onDelete={deleteGemini}
             onToggle={(index, enabled) => void setConfigEnabled('gemini', index, enabled)}
+            onSetLimit={(apiKey) => setLimitApiKey(apiKey)}
           />
         </div>
 
@@ -436,6 +439,7 @@ export function AiProvidersPage() {
             onEdit={(index) => openEditor(`/ai-providers/codex/${index}`)}
             onDelete={(index) => void deleteProviderEntry('codex', index)}
             onToggle={(index, enabled) => void setConfigEnabled('codex', index, enabled)}
+            onSetLimit={(apiKey) => setLimitApiKey(apiKey)}
           />
         </div>
 
@@ -450,6 +454,7 @@ export function AiProvidersPage() {
             onEdit={(index) => openEditor(`/ai-providers/claude/${index}`)}
             onDelete={(index) => void deleteProviderEntry('claude', index)}
             onToggle={(index, enabled) => void setConfigEnabled('claude', index, enabled)}
+            onSetLimit={(apiKey) => setLimitApiKey(apiKey)}
           />
         </div>
 
@@ -464,6 +469,7 @@ export function AiProvidersPage() {
             onEdit={(index) => openEditor(`/ai-providers/vertex/${index}`)}
             onDelete={deleteVertex}
             onToggle={(index, enabled) => void setConfigEnabled('vertex', index, enabled)}
+            onSetLimit={(apiKey) => setLimitApiKey(apiKey)}
           />
         </div>
 
@@ -494,6 +500,14 @@ export function AiProvidersPage() {
       </div>
 
       <ProviderNav />
+
+      {limitApiKey !== null && (
+        <ApiKeyLimitModal
+          open={true}
+          apiKey={limitApiKey}
+          onClose={() => setLimitApiKey(null)}
+        />
+      )}
     </div>
   );
 }
