@@ -509,6 +509,7 @@
     "limit_soft_label": "软限额",
     "limit_soft_hint": "达到限额仍放行（由上游配额兜底）",
     "limit_soft_active": "已达限额——使用上游配额兜底",
+    "limit_reset_in": "重置倒计时",
     "limit_remove": "移除限额",
     "limit_saved": "限额已保存",
     "limit_deleted": "限额已移除",

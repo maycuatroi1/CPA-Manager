@@ -32,6 +32,20 @@ const WINDOW_OPTIONS = [
   { value: '30', label: '30 days' },
 ] as const;
 
+function formatDuration(seconds: number): string {
+  if (seconds <= 0) return '0s';
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  if (mins > 0 && days === 0) parts.push(`${mins}m`);
+  if (secs > 0 && days === 0 && hours === 0) parts.push(`${secs}s`);
+  return parts.join(' ') || '0s';
+}
+
 export function ApiKeyLimitModal({ open, apiKey, onClose }: ApiKeyLimitModalProps) {
   const { t } = useTranslation();
   const inputId = useId();
@@ -166,6 +180,20 @@ export function ApiKeyLimitModal({ open, apiKey, onClose }: ApiKeyLimitModalProp
   const usedPercent = limitVal > 0 ? Math.min(100, Math.round((usedValue / limitVal) * 100)) : 0;
   const isOverLimit = checkData?.limitReached ?? false;
 
+  // Live tick so the "Reset in X" countdown updates each second while the
+  // modal is open. We only run the timer when there's something to count
+  // down to, otherwise React would re-render needlessly.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!open || !isOverLimit || !checkData?.resetAtMs) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [open, isOverLimit, checkData?.resetAtMs]);
+
+  const resetAtMs = checkData?.resetAtMs ?? 0;
+  const resetSeconds = resetAtMs > 0 ? Math.max(0, Math.floor((resetAtMs - now) / 1000)) : 0;
+  const resetAtLabel = resetAtMs > 0 ? new Date(resetAtMs).toLocaleString() : '';
+
   const noUsageService = !usageServiceEnabled || !usageServiceBase;
 
   return (
@@ -227,6 +255,15 @@ export function ApiKeyLimitModal({ open, apiKey, onClose }: ApiKeyLimitModalProp
                 {checkData?.softLimitOnly
                   ? t('ai_providers.limit_soft_active')
                   : t('ai_providers.limit_blocked')}
+              </div>
+            )}
+            {isOverLimit && resetAtMs > 0 && (
+              <div className={styles.resetRow}>
+                <span className={styles.resetLabel}>{t('ai_providers.limit_reset_in')}</span>
+                <span className={styles.resetValue}>
+                  {formatDuration(resetSeconds)}{' '}
+                  <span className={styles.resetAt}>({resetAtLabel})</span>
+                </span>
               </div>
             )}
           </div>

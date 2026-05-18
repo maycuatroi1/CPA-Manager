@@ -507,6 +507,7 @@
     "limit_soft_label": "Мягкий лимит",
     "limit_soft_hint": "Пропускать запросы при достижении лимита (резерв через upstream)",
     "limit_soft_active": "Лимит достигнут — используется upstream-квота",
+    "limit_reset_in": "Сброс через",
     "limit_remove": "Удалить лимит",
     "limit_saved": "Лимит сохранён",
     "limit_deleted": "Лимит удалён",

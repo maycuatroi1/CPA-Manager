@@ -611,19 +611,29 @@ func (s *Server) handleAPIKeyLimits(w http.ResponseWriter, r *http.Request) {
 		// softLimitOnly flag to decide whether to perform an upstream
 		// quota fallback before forwarding the actual request.
 		allowed := !item.LimitReached || item.SoftLimit
+		var resetAfterSec int64
+		if item.ResetAtMS > 0 {
+			remaining := (item.ResetAtMS - time.Now().UnixMilli()) / 1000
+			if remaining < 0 {
+				remaining = 0
+			}
+			resetAfterSec = remaining
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"apiKeyHash":    item.APIKeyHash,
-			"allowed":       allowed,
-			"hasLimit":      true,
-			"limitType":     item.LimitType,
-			"limitValue":    item.LimitValue,
-			"windowDays":    item.WindowDays,
-			"usedTokens":    item.UsedTokens,
-			"usedCost":      item.UsedCost,
-			"limitReached":  item.LimitReached,
-			"softLimit":     item.SoftLimit,
-			"softLimitOnly": item.SoftLimitOnly,
-			"priority":      item.Priority,
+			"apiKeyHash":        item.APIKeyHash,
+			"allowed":           allowed,
+			"hasLimit":          true,
+			"limitType":         item.LimitType,
+			"limitValue":        item.LimitValue,
+			"windowDays":        item.WindowDays,
+			"usedTokens":        item.UsedTokens,
+			"usedCost":          item.UsedCost,
+			"limitReached":      item.LimitReached,
+			"softLimit":         item.SoftLimit,
+			"softLimitOnly":     item.SoftLimitOnly,
+			"priority":          item.Priority,
+			"resetAtMs":         item.ResetAtMS,
+			"resetAfterSeconds": resetAfterSec,
 		})
 		return
 	}
