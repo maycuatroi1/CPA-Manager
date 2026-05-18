@@ -43,3 +43,8 @@ TODO.md
 /run/*.pid
 /run/*.log
 .gitnexus
+
+# Local Go build artifacts (when running `go build ./cmd/...` from usage-service)
+usage-service/cpa-manager
+usage-service/limit-gate
+usage-service/*.exe
