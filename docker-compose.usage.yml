@@ -46,7 +46,7 @@ services:
       LIMIT_GATE_USAGE_URL: "http://cpa-manager:18317"
       # Management key configured for cpa-manager. Leave empty if the
       # usage-service has not been bootstrapped with one.
-      LIMIT_GATE_MANAGEMENT_KEY: ""
+      LIMIT_GATE_MANAGEMENT_KEY: ${LIMIT_GATE_MANAGEMENT_KEY:-}
       LIMIT_GATE_CHECK_TIMEOUT: "500ms"
     depends_on:
       cpa-manager:
