@@ -509,6 +509,7 @@
     "limit_soft_label": "Soft limit",
     "limit_soft_hint": "Allow requests even when limit reached (fall back to upstream quota)",
     "limit_soft_active": "Limit reached — falling back to upstream quota",
+    "limit_reset_in": "Reset in",
     "limit_remove": "Remove Limit",
     "limit_saved": "Limit saved",
     "limit_deleted": "Limit removed",

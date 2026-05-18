@@ -156,6 +156,7 @@ export interface ApiKeyLimitWithUsage extends ApiKeyLimit {
   usedCost: number;
   limitReached: boolean;
   softLimitOnly?: boolean;
+  resetAtMs?: number;
 }
 
 export interface ApiKeyLimitsResponse {
@@ -175,6 +176,8 @@ export interface ApiKeyLimitCheckResponse {
   priority?: boolean;
   softLimit?: boolean;
   softLimitOnly?: boolean;
+  resetAtMs?: number;
+  resetAfterSeconds?: number;
 }
 
 export interface UsageImportResponse {

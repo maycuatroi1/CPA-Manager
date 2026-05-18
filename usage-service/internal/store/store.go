@@ -92,10 +92,15 @@ type APIKeyLimit struct {
 
 type APIKeyLimitWithUsage struct {
 	APIKeyLimit
-	UsedTokens     int64   `json:"usedTokens"`
-	UsedCost       float64 `json:"usedCost"`
-	LimitReached   bool    `json:"limitReached"`
-	SoftLimitOnly  bool    `json:"softLimitOnly"`
+	UsedTokens    int64   `json:"usedTokens"`
+	UsedCost      float64 `json:"usedCost"`
+	LimitReached  bool    `json:"limitReached"`
+	SoftLimitOnly bool    `json:"softLimitOnly"`
+	// ResetAtMS is the epoch millisecond timestamp at which the oldest
+	// event in the current usage window fully ages out. After this point
+	// some headroom opens up under a sliding-window limit. 0 when the
+	// limit is not reached or there are no events in the window.
+	ResetAtMS int64 `json:"resetAtMs,omitempty"`
 }
 
 type Store struct {
@@ -739,7 +744,7 @@ func (s *Store) DeleteAPIKeyLimit(ctx context.Context, apiKeyHash string) error 
 	return err
 }
 
-func (s *Store) getAPIKeyUsage(ctx context.Context, apiKeyHash string, windowDays int) (int64, float64, error) {
+func (s *Store) getAPIKeyUsage(ctx context.Context, apiKeyHash string, windowDays int) (int64, float64, int64, error) {
 	windowStartMS := time.Now().AddDate(0, 0, -windowDays).UnixMilli()
 	row := s.db.QueryRowContext(ctx, `select
 		coalesce(sum(ue.total_tokens), 0),
@@ -749,7 +754,8 @@ func (s *Store) getAPIKeyUsage(ctx context.Context, apiKeyHash string, windowDay
 				else 0 end) * coalesce(mp.prompt_per_1m, 0) / 1000000.0
 			+ (case when ue.cached_tokens > ue.cache_tokens then ue.cached_tokens else ue.cache_tokens end) * coalesce(mp.cache_per_1m, 0) / 1000000.0
 			+ ue.output_tokens * coalesce(mp.completion_per_1m, 0) / 1000000.0
-		), 0)
+		), 0),
+		coalesce(min(ue.timestamp_ms), 0)
 		from usage_events ue
 		left join model_prices mp on ue.model = mp.model
 		where ue.api_key_hash = ?
@@ -760,10 +766,21 @@ func (s *Store) getAPIKeyUsage(ctx context.Context, apiKeyHash string, windowDay
 	)
 	var totalTokens int64
 	var totalCost float64
-	if err := row.Scan(&totalTokens, &totalCost); err != nil {
-		return 0, 0, err
+	var oldestEventMS int64
+	if err := row.Scan(&totalTokens, &totalCost, &oldestEventMS); err != nil {
+		return 0, 0, 0, err
 	}
-	return totalTokens, totalCost, nil
+	return totalTokens, totalCost, oldestEventMS, nil
+}
+
+// computeResetAtMS returns the epoch millisecond timestamp at which the
+// oldest event in the current usage window fully ages out. Returns 0 when
+// the limit is not reached or there are no events in the window.
+func computeResetAtMS(limitReached bool, oldestEventMS int64, windowDays int) int64 {
+	if !limitReached || oldestEventMS <= 0 {
+		return 0
+	}
+	return oldestEventMS + int64(windowDays)*86400000
 }
 
 func (s *Store) LoadAPIKeyLimitsWithUsage(ctx context.Context) ([]APIKeyLimitWithUsage, error) {
@@ -773,7 +790,7 @@ func (s *Store) LoadAPIKeyLimitsWithUsage(ctx context.Context) ([]APIKeyLimitWit
 	}
 	result := make([]APIKeyLimitWithUsage, 0, len(limits))
 	for _, limit := range limits {
-		tokens, cost, err := s.getAPIKeyUsage(ctx, limit.APIKeyHash, limit.WindowDays)
+		tokens, cost, oldestEventMS, err := s.getAPIKeyUsage(ctx, limit.APIKeyHash, limit.WindowDays)
 		if err != nil {
 			return nil, err
 		}
@@ -786,6 +803,7 @@ func (s *Store) LoadAPIKeyLimitsWithUsage(ctx context.Context) ([]APIKeyLimitWit
 			UsedCost:      cost,
 			LimitReached:  limitReached,
 			SoftLimitOnly: limitReached && limit.SoftLimit,
+			ResetAtMS:     computeResetAtMS(limitReached, oldestEventMS, limit.WindowDays),
 		})
 	}
 	return result, nil
@@ -816,7 +834,7 @@ func (s *Store) CheckAPIKeyLimit(ctx context.Context, apiKeyHash string) (APIKey
 	limit.Enabled = enabled != 0
 	limit.Priority = priority != 0
 	limit.SoftLimit = softLimit != 0
-	tokens, cost, err := s.getAPIKeyUsage(ctx, hash, limit.WindowDays)
+	tokens, cost, oldestEventMS, err := s.getAPIKeyUsage(ctx, hash, limit.WindowDays)
 	if err != nil {
 		return APIKeyLimitWithUsage{}, false, err
 	}
@@ -829,6 +847,7 @@ func (s *Store) CheckAPIKeyLimit(ctx context.Context, apiKeyHash string) (APIKey
 		UsedCost:      cost,
 		LimitReached:  limitReached,
 		SoftLimitOnly: limitReached && limit.SoftLimit,
+		ResetAtMS:     computeResetAtMS(limitReached, oldestEventMS, limit.WindowDays),
 	}, true, nil
 }
 
