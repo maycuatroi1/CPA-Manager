@@ -125,6 +125,41 @@
   color: var(--color-text-tertiary, #999);
 }
 
+.errorPreview {
+  margin-top: 4px;
+  border: 1px solid var(--color-border, #e0e0e0);
+  border-radius: 6px;
+  background: var(--color-bg, #fff);
+}
+
+.errorPreviewSummary {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 10px;
+  cursor: pointer;
+  color: var(--color-text-secondary, #555);
+  user-select: none;
+
+  &:hover {
+    color: var(--color-text-primary, #222);
+  }
+}
+
+.errorPreviewBody {
+  margin: 0;
+  padding: 8px 10px;
+  border-top: 1px solid var(--color-border, #eee);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--color-text-primary, #222);
+  background: var(--color-bg-secondary, #fafafa);
+  border-bottom-left-radius: 6px;
+  border-bottom-right-radius: 6px;
+  overflow-x: auto;
+  white-space: pre;
+}
+
 .formRow {
   display: flex;
   align-items: center;

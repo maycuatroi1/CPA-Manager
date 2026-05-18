@@ -163,6 +163,15 @@ export interface ApiKeyLimitsResponse {
   items: ApiKeyLimitWithUsage[];
 }
 
+export interface ApiKeyLimitErrorResponse {
+  status: number;
+  headers: Record<string, string>;
+  body: {
+    type: 'error';
+    error: { type: string; message: string };
+  };
+}
+
 export interface ApiKeyLimitCheckResponse {
   apiKeyHash: string;
   allowed: boolean;
@@ -178,6 +187,7 @@ export interface ApiKeyLimitCheckResponse {
   softLimitOnly?: boolean;
   resetAtMs?: number;
   resetAfterSeconds?: number;
+  errorResponse?: ApiKeyLimitErrorResponse;
 }
 
 export interface UsageImportResponse {

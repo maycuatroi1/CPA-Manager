@@ -266,6 +266,16 @@ export function ApiKeyLimitModal({ open, apiKey, onClose }: ApiKeyLimitModalProp
                 </span>
               </div>
             )}
+            {checkData?.errorResponse && (
+              <details className={styles.errorPreview}>
+                <summary className={styles.errorPreviewSummary}>
+                  {t('ai_providers.limit_error_preview')}
+                </summary>
+                <pre className={styles.errorPreviewBody}>
+                  {JSON.stringify(checkData.errorResponse, null, 2)}
+                </pre>
+              </details>
+            )}
           </div>
         )}
 

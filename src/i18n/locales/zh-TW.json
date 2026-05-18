@@ -508,6 +508,7 @@
     "limit_soft_hint": "達到限額仍放行（由上游配額兜底）",
     "limit_soft_active": "已達限額——使用上游配額兜底",
     "limit_reset_in": "重置倒數",
+    "limit_error_preview": "檢視 429 回應（預覽）",
     "limit_remove": "移除限額",
     "limit_saved": "限額已儲存",
     "limit_deleted": "限額已移除",
