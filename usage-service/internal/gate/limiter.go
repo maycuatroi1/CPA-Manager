@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -60,15 +61,21 @@ func HashAPIKey(apiKey string) string {
 
 // Check looks up the limit state for apiKey. On any transport-level
 // error it returns allowed=true (fail-open): a usage-service outage
-// should not break the whole proxy.
+// should not break the whole proxy. Diagnostic details are logged so
+// operators can tell allow-by-policy from allow-by-fail-open.
 func (c *Checker) Check(ctx context.Context, apiKey string) (bool, *ErrorResponse) {
 	if apiKey == "" || c.UsageServiceURL == "" {
 		return true, nil
 	}
 	hash := HashAPIKey(apiKey)
+	shortHash := hash
+	if len(shortHash) > 8 {
+		shortHash = shortHash[:8]
+	}
 	endpoint := c.UsageServiceURL + "/v0/management/api-key-limits/" + url.PathEscape(hash) + "/check"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
+		log.Printf("gate.check: hash=%s build-request-error: %v (fail-open)", shortHash, err)
 		return true, nil
 	}
 	if c.ManagementKey != "" {
@@ -76,17 +83,22 @@ func (c *Checker) Check(ctx context.Context, apiKey string) (bool, *ErrorRespons
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		log.Printf("gate.check: hash=%s transport-error: %v (fail-open)", shortHash, err)
 		return true, nil
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, resp.Body)
+		log.Printf("gate.check: hash=%s upstream-status=%d (fail-open)", shortHash, resp.StatusCode)
 		return true, nil
 	}
 	var out CheckResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		log.Printf("gate.check: hash=%s decode-error: %v (fail-open)", shortHash, err)
 		return true, nil
 	}
+	log.Printf("gate.check: hash=%s hasLimit=%v limitReached=%v allowed=%v softLimitOnly=%v",
+		shortHash, out.HasLimit, out.LimitReached, out.Allowed, out.SoftLimitOnly)
 	return out.Allowed, out.ErrorResponse
 }
 
