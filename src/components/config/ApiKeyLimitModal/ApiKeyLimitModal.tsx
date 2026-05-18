@@ -12,7 +12,7 @@ import {
   type ApiKeyLimitWindowDays,
 } from '@/services/api/usageService';
 import { useAuthStore, useUsageServiceStore } from '@/stores';
-import { sha256hex } from '@/utils/hash';
+import { sha256Hex } from '@/utils/apiKeyHash';
 import { maskApiKey } from '@/utils/format';
 import styles from './ApiKeyLimitModal.module.scss';
 
@@ -65,11 +65,10 @@ export function ApiKeyLimitModal({ open, apiKey, onClose }: ApiKeyLimitModalProp
     if (!open || !apiKey) return;
     let cancelled = false;
 
-    void (async () => {
-      const hash = await sha256hex(apiKey);
-      if (cancelled) return;
-      setApiKeyHash(hash);
+    const hash = sha256Hex(apiKey);
+    setApiKeyHash(hash);
 
+    void (async () => {
       const base = resolveBase();
       if (!base) return;
 
