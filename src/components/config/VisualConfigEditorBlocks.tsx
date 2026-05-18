@@ -39,6 +39,7 @@ import {
 import { maskApiKey } from '@/utils/format';
 import { sha256Hex } from '@/utils/apiKeyHash';
 import { isValidApiKeyCharset } from '@/utils/validation';
+import { ApiKeyLimitModal } from './ApiKeyLimitModal';
 
 /** Minimum character count before the expand/collapse toggle appears. */
 const EXPAND_THRESHOLD = 30;
@@ -228,6 +229,7 @@ export const ApiKeysCardEditor = memo(function ApiKeysCardEditor({
   const [aliasInputValue, setAliasInputValue] = useState('');
   const [aliasFormError, setAliasFormError] = useState('');
   const [aliasSaving, setAliasSaving] = useState(false);
+  const [limitApiKey, setLimitApiKey] = useState<string | null>(null);
 
   const aliasByHash = useMemo(() => {
     const map = new Map<string, ApiKeyAlias>();
@@ -598,6 +600,14 @@ export const ApiKeysCardEditor = memo(function ApiKeysCardEditor({
                   <Button
                     variant="secondary"
                     size="sm"
+                    onClick={() => setLimitApiKey(String(key || ''))}
+                    disabled={disabled || !aliasesAvailable}
+                  >
+                    {t('ai_providers.set_limit')}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     onClick={() => handleCopy(key)}
                     disabled={disabled}
                   >
@@ -762,6 +772,14 @@ export const ApiKeysCardEditor = memo(function ApiKeysCardEditor({
           )}
         </div>
       </Modal>
+
+      {limitApiKey !== null && (
+        <ApiKeyLimitModal
+          open={true}
+          apiKey={limitApiKey}
+          onClose={() => setLimitApiKey(null)}
+        />
+      )}
     </div>
   );
 });
