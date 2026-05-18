@@ -619,7 +619,7 @@ func (s *Server) handleAPIKeyLimits(w http.ResponseWriter, r *http.Request) {
 			}
 			resetAfterSec = remaining
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
+		payload := map[string]any{
 			"apiKeyHash":        item.APIKeyHash,
 			"allowed":           allowed,
 			"hasLimit":          true,
@@ -634,7 +634,14 @@ func (s *Server) handleAPIKeyLimits(w http.ResponseWriter, r *http.Request) {
 			"priority":          item.Priority,
 			"resetAtMs":         item.ResetAtMS,
 			"resetAfterSeconds": resetAfterSec,
-		})
+		}
+		// Provide a ready-to-forward Claude-style 429 only when the key
+		// is actually blocked. With soft_limit=true the proxy lets the
+		// request through, so no error body is needed.
+		if item.LimitReached && !item.SoftLimit {
+			payload["errorResponse"] = buildClaudeRateLimitResponse(item)
+		}
+		writeJSON(w, http.StatusOK, payload)
 		return
 	}
 
