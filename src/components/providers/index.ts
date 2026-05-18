@@ -1,4 +1,5 @@
 export { AmpcodeSection } from './AmpcodeSection';
+export { ApiKeyLimitModal } from './ApiKeyLimitModal';
 export { ClaudeSection } from './ClaudeSection';
 export { CodexSection } from './CodexSection';
 export { GeminiSection } from './GeminiSection';

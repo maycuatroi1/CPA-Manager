@@ -26,10 +26,11 @@ import (
 var embeddedPanel embed.FS
 
 type Server struct {
-	cfg       config.Config
-	store     *store.Store
-	collector *collector.Manager
-	startedAt int64
+	cfg          config.Config
+	store        *store.Store
+	collector    *collector.Manager
+	startedAt    int64
+	priorityGate *priorityGate
 }
 
 type setupSource string
@@ -88,10 +89,11 @@ type apiKeyAliasesRequest struct {
 
 func New(cfg config.Config, store *store.Store, collector *collector.Manager) *Server {
 	return &Server{
-		cfg:       cfg,
-		store:     store,
-		collector: collector,
-		startedAt: time.Now().UnixMilli(),
+		cfg:          cfg,
+		store:        store,
+		collector:    collector,
+		startedAt:    time.Now().UnixMilli(),
+		priorityGate: newPriorityGate(),
 	}
 }
 
@@ -119,6 +121,10 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.HasPrefix(r.URL.Path, "/v0/management/api-key-aliases") {
 		s.withCORS(s.handleAPIKeyAliases)(w, r)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/v0/management/api-key-limits") {
+		s.withCORS(s.handleAPIKeyLimits)(w, r)
 		return
 	}
 	cleanUsagePath := strings.TrimRight(r.URL.Path, "/")
@@ -524,6 +530,114 @@ func (s *Server) handleAPIKeyAliases(w http.ResponseWriter, r *http.Request) {
 	default:
 		methodNotAllowed(w)
 	}
+}
+
+func (s *Server) handleAPIKeyLimits(w http.ResponseWriter, r *http.Request) {
+	if !s.authorizeIfConfigured(w, r) {
+		return
+	}
+
+	path := strings.TrimRight(r.URL.Path, "/")
+	const basePath = "/v0/management/api-key-limits"
+
+	if path == basePath {
+		switch r.Method {
+		case http.MethodGet:
+			items, err := s.store.LoadAPIKeyLimitsWithUsage(r.Context())
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"items": items})
+		case http.MethodPut:
+			var req store.APIKeyLimit
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				writeError(w, http.StatusBadRequest, err)
+				return
+			}
+			if err := s.store.UpsertAPIKeyLimit(r.Context(), req); err != nil {
+				writeError(w, http.StatusBadRequest, err)
+				return
+			}
+			items, err := s.store.LoadAPIKeyLimitsWithUsage(r.Context())
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"items": items})
+		default:
+			methodNotAllowed(w)
+		}
+		return
+	}
+
+	// /v0/management/api-key-limits/{hash}
+	// /v0/management/api-key-limits/{hash}/check
+	rest := strings.TrimPrefix(path, basePath+"/")
+	if rest == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	if strings.HasSuffix(rest, "/check") {
+		apiKeyHash := strings.TrimSuffix(rest, "/check")
+		if r.Method != http.MethodGet {
+			methodNotAllowed(w)
+			return
+		}
+		// Look up the priority flag first so high-priority requests can
+		// proceed immediately while low-priority callers briefly yield.
+		preItem, preFound, preErr := s.store.CheckAPIKeyLimit(r.Context(), apiKeyHash)
+		highPriority := preFound && preErr == nil && preItem.Priority
+		release := s.priorityGate.enter(r.Context(), highPriority)
+		defer release()
+
+		item, found, err := s.store.CheckAPIKeyLimit(r.Context(), apiKeyHash)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		if !found {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"apiKeyHash": apiKeyHash,
+				"allowed":    true,
+				"hasLimit":   false,
+				"priority":   false,
+			})
+			return
+		}
+		// Soft limit: when the limit is reached but soft_limit=true the
+		// caller is still allowed through. The CPA proxy can use the
+		// softLimitOnly flag to decide whether to perform an upstream
+		// quota fallback before forwarding the actual request.
+		allowed := !item.LimitReached || item.SoftLimit
+		writeJSON(w, http.StatusOK, map[string]any{
+			"apiKeyHash":    item.APIKeyHash,
+			"allowed":       allowed,
+			"hasLimit":      true,
+			"limitType":     item.LimitType,
+			"limitValue":    item.LimitValue,
+			"windowDays":    item.WindowDays,
+			"usedTokens":    item.UsedTokens,
+			"usedCost":      item.UsedCost,
+			"limitReached":  item.LimitReached,
+			"softLimit":     item.SoftLimit,
+			"softLimitOnly": item.SoftLimitOnly,
+			"priority":      item.Priority,
+		})
+		return
+	}
+
+	apiKeyHash := rest
+	if r.Method != http.MethodDelete {
+		methodNotAllowed(w)
+		return
+	}
+	if err := s.store.DeleteAPIKeyLimit(r.Context(), apiKeyHash); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func fetchLiteLLMModelPrices(ctx context.Context) (map[string]store.ModelPrice, int, error) {
@@ -1286,6 +1400,12 @@ func usageServiceErrorCode(err error) string {
 		return "api_key_aliases_required"
 	case strings.Contains(message, "api key alias already exists"):
 		return "api_key_alias_duplicate"
+	case strings.Contains(message, "limitType must be"):
+		return "api_key_limit_type_invalid"
+	case strings.Contains(message, "limitValue must be"):
+		return "api_key_limit_value_invalid"
+	case strings.Contains(message, "windowDays must be"):
+		return "api_key_limit_window_invalid"
 	case strings.Contains(message, "model price sync failed"):
 		return "model_price_sync_failed"
 	case strings.Contains(message, "method not allowed"):

@@ -20,6 +20,9 @@ const USAGE_SERVICE_ERROR_CODES = new Set([
   'prices_required',
   'api_key_aliases_required',
   'api_key_alias_duplicate',
+  'api_key_limit_type_invalid',
+  'api_key_limit_value_invalid',
+  'api_key_limit_window_invalid',
   'model_price_sync_failed',
   'method_not_allowed',
 ]);
@@ -132,6 +135,46 @@ export interface ApiKeyAlias {
 
 export interface ApiKeyAliasesResponse {
   items: ApiKeyAlias[];
+}
+
+export type ApiKeyLimitType = 'token' | 'cost';
+export type ApiKeyLimitWindowDays = 7 | 30;
+
+export interface ApiKeyLimit {
+  apiKeyHash: string;
+  limitType: ApiKeyLimitType;
+  limitValue: number;
+  windowDays: ApiKeyLimitWindowDays;
+  enabled: boolean;
+  priority?: boolean;
+  softLimit?: boolean;
+  updatedAtMs?: number;
+}
+
+export interface ApiKeyLimitWithUsage extends ApiKeyLimit {
+  usedTokens: number;
+  usedCost: number;
+  limitReached: boolean;
+  softLimitOnly?: boolean;
+}
+
+export interface ApiKeyLimitsResponse {
+  items: ApiKeyLimitWithUsage[];
+}
+
+export interface ApiKeyLimitCheckResponse {
+  apiKeyHash: string;
+  allowed: boolean;
+  hasLimit: boolean;
+  limitType?: ApiKeyLimitType;
+  limitValue?: number;
+  windowDays?: number;
+  usedTokens?: number;
+  usedCost?: number;
+  limitReached?: boolean;
+  priority?: boolean;
+  softLimit?: boolean;
+  softLimitOnly?: boolean;
 }
 
 export interface UsageImportResponse {
@@ -466,6 +509,73 @@ export const usageServiceApi = {
         payload,
         {
           timeout: USAGE_SERVICE_TRANSFER_TIMEOUT_MS,
+          headers: authHeaders(managementKey),
+        }
+      );
+      return response.data;
+    });
+  },
+
+  getApiKeyLimits: async (
+    base: string,
+    managementKey?: string
+  ): Promise<ApiKeyLimitsResponse> => {
+    return withUsageServiceError(async () => {
+      const response = await axios.get<ApiKeyLimitsResponse>(
+        buildUrl(base, '/v0/management/api-key-limits'),
+        {
+          timeout: USAGE_SERVICE_TIMEOUT_MS,
+          headers: authHeaders(managementKey),
+        }
+      );
+      return response.data;
+    });
+  },
+
+  saveApiKeyLimit: async (
+    base: string,
+    limit: ApiKeyLimit,
+    managementKey?: string
+  ): Promise<ApiKeyLimitsResponse> => {
+    return withUsageServiceError(async () => {
+      const response = await axios.put<ApiKeyLimitsResponse>(
+        buildUrl(base, '/v0/management/api-key-limits'),
+        limit,
+        {
+          timeout: USAGE_SERVICE_TIMEOUT_MS,
+          headers: authHeaders(managementKey),
+        }
+      );
+      return response.data;
+    });
+  },
+
+  deleteApiKeyLimit: async (
+    base: string,
+    apiKeyHash: string,
+    managementKey?: string
+  ): Promise<void> => {
+    await withUsageServiceError(async () => {
+      await axios.delete(
+        buildUrl(base, `/v0/management/api-key-limits/${encodeURIComponent(apiKeyHash)}`),
+        {
+          timeout: USAGE_SERVICE_TIMEOUT_MS,
+          headers: authHeaders(managementKey),
+        }
+      );
+    });
+  },
+
+  checkApiKeyLimit: async (
+    base: string,
+    apiKeyHash: string,
+    managementKey?: string
+  ): Promise<ApiKeyLimitCheckResponse> => {
+    return withUsageServiceError(async () => {
+      const response = await axios.get<ApiKeyLimitCheckResponse>(
+        buildUrl(base, `/v0/management/api-key-limits/${encodeURIComponent(apiKeyHash)}/check`),
+        {
+          timeout: USAGE_SERVICE_TIMEOUT_MS,
           headers: authHeaders(managementKey),
         }
       );
