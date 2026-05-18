@@ -25,5 +25,37 @@ services:
       timeout: 3s
       retries: 3
 
+  # Sidecar reverse proxy that enforces per-API-key limits in front of
+  # cliproxy. Clients point at this service instead of cliproxy directly.
+  # The gate calls cpa-manager /check for every request, forwards on
+  # allow, and returns the Claude-style 429 errorResponse embedded in
+  # /check when blocked.
+  limit-gate:
+    build:
+      context: .
+      dockerfile: Dockerfile.limit-gate
+    image: seakee/cpa-limit-gate:latest
+    restart: unless-stopped
+    ports:
+      - "8788:8788"
+    environment:
+      LIMIT_GATE_LISTEN: "0.0.0.0:8788"
+      # Upstream proxy clients used to talk to directly.
+      LIMIT_GATE_UPSTREAM: "https://cliproxy.omelet.tech"
+      # Internal cpa-manager URL (same docker network).
+      LIMIT_GATE_USAGE_URL: "http://cpa-manager:18317"
+      # Management key configured for cpa-manager. Leave empty if the
+      # usage-service has not been bootstrapped with one.
+      LIMIT_GATE_MANAGEMENT_KEY: ""
+      LIMIT_GATE_CHECK_TIMEOUT: "500ms"
+    depends_on:
+      cpa-manager:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8788/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
 volumes:
   cpa-manager-data:
