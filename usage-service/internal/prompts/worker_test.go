@@ -183,3 +183,21 @@ func TestWorkerRunOnceDrainsEveryDuePrompt(t *testing.T) {
 		t.Fatalf("%d prompts still pending after one RunOnce", len(due))
 	}
 }
+
+// A CLIProxyAPI restart must not burn retries: the log files survive on disk.
+func TestWorkerKeepsAttemptsWhenUpstreamIsDown(t *testing.T) {
+	worker, db, clock, base := newWorkerTest(t, func(w http.ResponseWriter, r *http.Request) {})
+	down := httptest.NewServer(http.NotFoundHandler())
+	downURL := down.URL
+	down.Close()
+	_ = base
+
+	ctx := context.Background()
+	if err := worker.RunOnce(ctx, downURL, "key"); !errors.Is(err, ErrUpstreamUnavailable) {
+		t.Fatalf("err = %v, want ErrUpstreamUnavailable", err)
+	}
+	due, _ := db.DuePrompts(ctx, clock.now.UnixMilli(), 10)
+	if len(due) != 1 || due[0].Attempts != 0 {
+		t.Fatalf("due = %#v, want one row with 0 attempts", due)
+	}
+}

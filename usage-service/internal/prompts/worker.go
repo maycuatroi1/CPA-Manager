@@ -3,6 +3,7 @@ package prompts
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -27,6 +28,8 @@ const (
 var retryDelays = []time.Duration{5 * time.Second, 15 * time.Second, 45 * time.Second, 2 * time.Minute, 5 * time.Minute}
 
 var ErrUnauthorized = errors.New("request log fetch unauthorized")
+
+var ErrUpstreamUnavailable = errors.New("request log upstream unavailable")
 
 // Worker fetches CLIProxyAPI request logs for pending request ids and stores
 // the user's question.
@@ -152,6 +155,14 @@ func (w *Worker) process(ctx context.Context, baseURL string, managementKey stri
 	switch {
 	case status == http.StatusUnauthorized || status == http.StatusForbidden:
 		return ErrUnauthorized
+	case status == 0 && fetchErr != nil,
+		status == http.StatusBadGateway || status == http.StatusServiceUnavailable || status == http.StatusGatewayTimeout:
+		// CLIProxyAPI is down or restarting; its log files survive, so stop
+		// the batch without spending this prompt's retries.
+		if fetchErr != nil {
+			return fmt.Errorf("%w: %v", ErrUpstreamUnavailable, fetchErr)
+		}
+		return fmt.Errorf("%w: status %d", ErrUpstreamUnavailable, status)
 	case fetchErr == nil && status == http.StatusOK:
 		question, result := ExtractQuestion(body)
 		return w.store.SavePromptResult(ctx, item.RequestID, result, question, nowMS)
