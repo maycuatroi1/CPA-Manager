@@ -22,6 +22,7 @@ export interface UsageTokens {
 
 export interface UsageDetail {
   timestamp: string;
+  request_id?: string;
   source: string;
   auth_index: string | number | null;
   api_key_hash?: string;
@@ -327,6 +328,7 @@ export function collectUsageDetailsWithEndpoint(usageData: unknown): UsageDetail
         const latencyMs = extractLatencyMs(detailRaw);
         details.push({
           timestamp,
+          request_id: readDetailString(detailRaw.request_id ?? detailRaw.requestId),
           source: normalizeSourceWithCache(sourceCache, detailRaw.source),
           auth_index: (detailRaw.auth_index ??
             detailRaw.authIndex ??

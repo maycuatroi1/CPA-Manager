@@ -364,6 +364,7 @@ export type MonitoringFailureRow = {
 
 export type MonitoringEventRow = {
   id: string;
+  requestId: string;
   timestamp: string;
   timestampMs: number;
   dayKey: string;
@@ -1507,6 +1508,7 @@ const buildEventRows = (
 
       return {
         id: `${detail.timestamp}-${detail.__modelName || '-'}-${sourceKey}-${authIndex}-${index}`,
+        requestId: readString(detail.request_id),
         timestamp: detail.timestamp,
         timestampMs,
         dayKey,
