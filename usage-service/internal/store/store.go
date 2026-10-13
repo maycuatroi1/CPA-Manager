@@ -113,7 +113,9 @@ func Open(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite", path)
+	// Per-connection pragmas go in the DSN so every pooled connection gets
+	// them; a plain Exec only configures whichever connection runs it.
+	db, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(5000)&_pragma=synchronous(FULL)&_pragma=foreign_keys(1)")
 	if err != nil {
 		return nil, err
 	}

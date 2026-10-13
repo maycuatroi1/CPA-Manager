@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"testing"
 )
@@ -93,5 +94,33 @@ func TestDeletePromptsBeforeUsesEventTimestamp(t *testing.T) {
 	}
 	if _, ok, _ := db.GetPrompt(ctx, "new"); !ok {
 		t.Fatalf("new prompt should remain")
+	}
+}
+
+// Every pooled connection must wait on locks: the prompt worker and the
+// collector write concurrently, and a SQLITE_BUSY would drop a usage batch.
+func TestEveryConnectionHasBusyTimeout(t *testing.T) {
+	db := openPromptTestStore(t)
+	ctx := context.Background()
+
+	first, err := db.db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("first conn: %v", err)
+	}
+	defer first.Close()
+	second, err := db.db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("second conn: %v", err)
+	}
+	defer second.Close()
+
+	for name, conn := range map[string]*sql.Conn{"first": first, "second": second} {
+		var timeout int
+		if err := conn.QueryRowContext(ctx, `pragma busy_timeout`).Scan(&timeout); err != nil {
+			t.Fatalf("%s busy_timeout: %v", name, err)
+		}
+		if timeout < 5000 {
+			t.Fatalf("%s connection busy_timeout = %d, want >= 5000", name, timeout)
+		}
 	}
 }
