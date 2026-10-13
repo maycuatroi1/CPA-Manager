@@ -62,13 +62,15 @@ func (s *Store) EnqueuePrompts(ctx context.Context, items []PromptEnqueue, nextA
 	return tx.Commit()
 }
 
+// DuePrompts returns due rows, fresh first attempts first: once the worker
+// falls behind, older request logs may already be rotated away.
 func (s *Store) DuePrompts(ctx context.Context, nowMS int64, limit int) ([]PendingPrompt, error) {
 	if limit <= 0 {
 		limit = 1
 	}
 	rows, err := s.db.QueryContext(ctx, `select request_id, attempts from request_prompts
 		where status = ? and next_attempt_ms <= ?
-		order by next_attempt_ms, request_id
+		order by attempts, next_attempt_ms desc, request_id
 		limit ?`, PromptStatusPending, nowMS, limit)
 	if err != nil {
 		return nil, err

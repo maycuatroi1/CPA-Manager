@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -122,5 +123,35 @@ func TestEveryConnectionHasBusyTimeout(t *testing.T) {
 		if timeout < 5000 {
 			t.Fatalf("%s connection busy_timeout = %d, want >= 5000", name, timeout)
 		}
+	}
+}
+
+// Fresh first attempts go before retries and older rows: once the worker
+// falls behind, old logs may already be rotated away.
+func TestDuePromptsPrefersFreshFirstAttempts(t *testing.T) {
+	db := openPromptTestStore(t)
+	ctx := context.Background()
+	if err := db.EnqueuePrompts(ctx, []PromptEnqueue{{RequestID: "old", EventTSMS: 1}}, 100, 0); err != nil {
+		t.Fatalf("enqueue old: %v", err)
+	}
+	if err := db.EnqueuePrompts(ctx, []PromptEnqueue{{RequestID: "retry", EventTSMS: 1}}, 50, 0); err != nil {
+		t.Fatalf("enqueue retry: %v", err)
+	}
+	if err := db.RetryPrompt(ctx, "retry", 1, 150, 0); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	if err := db.EnqueuePrompts(ctx, []PromptEnqueue{{RequestID: "new", EventTSMS: 1}}, 200, 0); err != nil {
+		t.Fatalf("enqueue new: %v", err)
+	}
+	due, err := db.DuePrompts(ctx, 1_000, 10)
+	if err != nil {
+		t.Fatalf("due: %v", err)
+	}
+	var order []string
+	for _, item := range due {
+		order = append(order, item.RequestID)
+	}
+	if strings.Join(order, ",") != "new,old,retry" {
+		t.Fatalf("order = %v, want [new old retry]", order)
 	}
 }

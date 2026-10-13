@@ -18,6 +18,8 @@ const (
 	maxLogBytes     = 20 << 20
 	pruneEvery      = time.Hour
 	maxErrorBackoff = 5 * time.Minute
+	// runOnceBudget bounds how long one RunOnce keeps draining due prompts.
+	runOnceBudget = 30 * time.Second
 )
 
 // retryDelays is the backoff after each failed fetch; one more failure than
@@ -123,16 +125,22 @@ func (w *Worker) Prune(ctx context.Context, retention time.Duration) error {
 }
 
 func (w *Worker) RunOnce(ctx context.Context, baseURL string, managementKey string) error {
-	due, err := w.store.DuePrompts(ctx, w.now().UnixMilli(), workerBatchSize)
-	if err != nil {
-		return err
-	}
-	for _, item := range due {
-		if err := ctx.Err(); err != nil {
+	started := time.Now()
+	for time.Since(started) < runOnceBudget {
+		due, err := w.store.DuePrompts(ctx, w.now().UnixMilli(), workerBatchSize)
+		if err != nil {
 			return err
 		}
-		if err := w.process(ctx, baseURL, managementKey, item); err != nil {
-			return err
+		if len(due) == 0 {
+			return nil
+		}
+		for _, item := range due {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if err := w.process(ctx, baseURL, managementKey, item); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

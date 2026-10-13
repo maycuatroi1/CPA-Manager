@@ -163,3 +163,23 @@ func TestWorkerReportsErrorsOnlyWhenStateChanges(t *testing.T) {
 		t.Fatalf("reported = %q, want %q", reported, want)
 	}
 }
+
+func TestWorkerRunOnceDrainsEveryDuePrompt(t *testing.T) {
+	worker, db, _, base := newWorkerTest(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(testLog))
+	})
+	ctx := context.Background()
+	items := make([]store.PromptEnqueue, 0, 12)
+	for i := 0; i < 12; i++ {
+		items = append(items, store.PromptEnqueue{RequestID: fmt.Sprintf("bulk-%02d", i), EventTSMS: 1})
+	}
+	if err := db.EnqueuePrompts(ctx, items, 0, 0); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	if err := worker.RunOnce(ctx, base, "key"); err != nil {
+		t.Fatalf("run once: %v", err)
+	}
+	if due, _ := db.DuePrompts(ctx, 1<<62, 100); len(due) != 0 {
+		t.Fatalf("%d prompts still pending after one RunOnce", len(due))
+	}
+}
