@@ -9,7 +9,13 @@ describe('collectUsageDetailsWithEndpoint request_id', () => {
           models: {
             'claude-test': {
               details: [
-                { timestamp: '2026-10-14T01:00:00Z', source: 's', request_id: 'abc123', tokens: {}, failed: false },
+                {
+                  timestamp: '2026-10-14T01:00:00Z',
+                  source: 's',
+                  request_id: 'abc123',
+                  tokens: {},
+                  failed: false,
+                },
                 { timestamp: '2026-10-14T01:01:00Z', source: 's', tokens: {}, failed: false },
               ],
             },
