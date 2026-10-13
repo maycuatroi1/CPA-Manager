@@ -78,6 +78,26 @@ export const getRangeBounds = (
   }
 };
 
+export type UsageFetchRange = {
+  startMs?: number;
+  endMs?: number;
+};
+
+// Server-side window for /usage. Preset ranges leave the end open so auto-refresh
+// still picks up new events; null means the range is incomplete and nothing should load.
+export const buildUsageFetchRange = (
+  range: MonitoringTimeRange,
+  nowMs: number,
+  customRange?: MonitoringCustomTimeRange | null
+): UsageFetchRange | null => {
+  const bounds = getRangeBounds(range, nowMs, customRange);
+  if (!bounds) return null;
+  if (range === 'custom') {
+    return { startMs: bounds.startMs, endMs: bounds.endMs };
+  }
+  return Number.isFinite(bounds.startMs) ? { startMs: bounds.startMs } : {};
+};
+
 const shouldUseHourlyTimeline = (
   range: MonitoringTimeRange,
   customRange?: MonitoringCustomTimeRange | null

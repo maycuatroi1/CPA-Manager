@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"compress/gzip"
 	"context"
 	"embed"
 	"encoding/json"
@@ -799,12 +800,22 @@ func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request) {
 			s.handleUsageExport(w, r)
 			return
 		}
-		events, err := s.store.RecentEvents(r.Context(), s.cfg.QueryLimit)
+		startMS, err := parseOptionalTimestampMS(r.URL.Query().Get("start_ms"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid start_ms: %w", err))
+			return
+		}
+		endMS, err := parseOptionalTimestampMS(r.URL.Query().Get("end_ms"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid end_ms: %w", err))
+			return
+		}
+		events, err := s.store.RecentEventsInRange(r.Context(), s.cfg.QueryLimit, startMS, endMS)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, usage.BuildPayload(events))
+		writeJSONMaybeGzip(w, r, http.StatusOK, usage.BuildPayload(events))
 	case http.MethodPost:
 		if strings.HasSuffix(r.URL.Path, "/import") {
 			s.handleUsageImport(w, r)
@@ -1378,6 +1389,52 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(value)
+}
+
+// writeJSONMaybeGzip gzips the body when the client accepts it; usage payloads
+// are large and highly repetitive, so compression cuts transfer size sharply.
+func writeJSONMaybeGzip(w http.ResponseWriter, r *http.Request, status int, value any) {
+	if !acceptsGzip(r) {
+		writeJSON(w, status, value)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Encoding", "gzip")
+	w.Header().Add("Vary", "Accept-Encoding")
+	w.WriteHeader(status)
+	zw, err := gzip.NewWriterLevel(w, gzip.BestSpeed)
+	if err != nil {
+		return
+	}
+	_ = json.NewEncoder(zw).Encode(value)
+	_ = zw.Close()
+}
+
+func acceptsGzip(r *http.Request) bool {
+	for _, part := range strings.Split(r.Header.Get("Accept-Encoding"), ",") {
+		coding, params, _ := strings.Cut(strings.TrimSpace(part), ";")
+		if !strings.EqualFold(strings.TrimSpace(coding), "gzip") {
+			continue
+		}
+		params = strings.ReplaceAll(strings.TrimSpace(params), " ", "")
+		return params != "q=0" && params != "q=0.0" && params != "q=0.00" && params != "q=0.000"
+	}
+	return false
+}
+
+func parseOptionalTimestampMS(raw string) (int64, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, nil
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	if value < 0 {
+		return 0, errors.New("must not be negative")
+	}
+	return value, nil
 }
 
 func writeError(w http.ResponseWriter, status int, err error) {

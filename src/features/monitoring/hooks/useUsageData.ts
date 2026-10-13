@@ -13,6 +13,11 @@ import {
 import { useAuthStore, useUsageServiceStore } from '@/stores';
 import { detectApiBaseFromLocation } from '@/utils/connection';
 import { clearModelPrices, loadModelPrices, saveModelPrices, type ModelPrice } from '@/utils/usage';
+import {
+  buildUsageFetchRange,
+  type MonitoringCustomTimeRange,
+  type MonitoringTimeRange,
+} from './useMonitoringData';
 
 export interface UsagePayload {
   total_requests?: number;
@@ -39,7 +44,15 @@ export interface UseUsageDataReturn {
   loadUsage: () => Promise<void>;
 }
 
-export function useUsageData(): UseUsageDataReturn {
+export interface UseUsageDataParams {
+  timeRange?: MonitoringTimeRange;
+  customTimeRange?: MonitoringCustomTimeRange | null;
+}
+
+export function useUsageData({
+  timeRange = 'all',
+  customTimeRange = null,
+}: UseUsageDataParams = {}): UseUsageDataReturn {
   const apiBase = useAuthStore((state) => state.apiBase);
   const managementKey = useAuthStore((state) => state.managementKey);
   const usageServiceEnabled = useUsageServiceStore((state) => state.enabled);
@@ -188,7 +201,10 @@ export function useUsageData(): UseUsageDataReturn {
         return;
       }
       setUsageServiceAvailable(true);
-      const payload = await usageServiceApi.getUsage(serviceBase, managementKey);
+      // Fetch only the selected window; pulling the full history made the page slow.
+      const range = buildUsageFetchRange(timeRange, Date.now(), customTimeRange);
+      if (!range) return;
+      const payload = await usageServiceApi.getUsage(serviceBase, managementKey, range);
       if (requestIdRef.current !== requestId) return;
       setUsage(payload ?? null);
       setLastRefreshedAt(new Date());
@@ -200,13 +216,16 @@ export function useUsageData(): UseUsageDataReturn {
         setLoading(false);
       }
     }
-  }, [managementKey, resolveUsageServiceBase]);
+  }, [customTimeRange, managementKey, resolveUsageServiceBase, timeRange]);
 
   useEffect(() => {
     void loadModelPricesFromStorage();
     void loadApiKeyAliases();
+  }, [loadApiKeyAliases, loadModelPricesFromStorage]);
+
+  useEffect(() => {
     void loadUsage();
-  }, [loadApiKeyAliases, loadModelPricesFromStorage, loadUsage]);
+  }, [loadUsage]);
 
   const setModelPrices = useCallback(
     async (prices: Record<string, ModelPrice>) => {

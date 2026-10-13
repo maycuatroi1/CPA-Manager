@@ -1869,7 +1869,7 @@ export function MonitoringCenterPage() {
     exportUsage,
     importUsage,
     loadUsage,
-  } = useUsageData();
+  } = useUsageData({ timeRange, customTimeRange });
 
   const {
     loading: monitoringLoading,
