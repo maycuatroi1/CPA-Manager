@@ -81,6 +81,10 @@ import {
   getNextMonitoringStatusBlockIndex,
 } from '@/features/monitoring/healthStatusAccessibility';
 import { buildRealtimeSourceDisplay } from '@/features/monitoring/realtimeSourceDisplay';
+import {
+  RequestPromptView,
+  type RequestPromptViewState,
+} from '@/features/monitoring/components/RequestPromptView';
 import { MonitoringPanel } from '@/features/monitoring/components/MonitoringPanel';
 import { useUsageData } from '@/features/monitoring/hooks/useUsageData';
 import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
@@ -100,6 +104,7 @@ import {
   type ModelPrice,
 } from '@/utils/usage';
 import { downloadBlob } from '@/utils/download';
+import { copyToClipboard } from '@/utils/clipboard';
 import { sha256Hex } from '@/utils/apiKeyHash';
 import styles from './MonitoringCenterPage.module.scss';
 
@@ -1869,6 +1874,7 @@ export function MonitoringCenterPage() {
     exportUsage,
     importUsage,
     loadUsage,
+    getRequestPrompt,
   } = useUsageData({ timeRange, customTimeRange });
 
   const {
@@ -1891,6 +1897,49 @@ export function MonitoringCenterPage() {
   const refreshAll = useCallback(async () => {
     await Promise.all([loadUsage(), loadApiKeyAliases(), refreshMeta(false)]);
   }, [loadApiKeyAliases, loadUsage, refreshMeta]);
+
+  const [promptRow, setPromptRow] = useState<MonitoringEventRow | null>(null);
+  const [promptState, setPromptState] = useState<RequestPromptViewState>({ kind: 'loading' });
+  const promptSeqRef = useRef(0);
+
+  const loadRequestPrompt = useCallback(
+    async (row: MonitoringEventRow) => {
+      const seq = promptSeqRef.current + 1;
+      promptSeqRef.current = seq;
+      setPromptState({ kind: 'loading' });
+      try {
+        const response = await getRequestPrompt(row.requestId);
+        if (promptSeqRef.current === seq) setPromptState({ kind: 'loaded', response });
+      } catch (err) {
+        if (promptSeqRef.current === seq) {
+          setPromptState({
+            kind: 'error',
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+    },
+    [getRequestPrompt]
+  );
+
+  const openRequestPrompt = useCallback(
+    (row: MonitoringEventRow) => {
+      setPromptRow(row);
+      void loadRequestPrompt(row);
+    },
+    [loadRequestPrompt]
+  );
+
+  const copyRequestPrompt = useCallback(
+    async (text: string) => {
+      const copied = await copyToClipboard(text);
+      showNotification(
+        copied ? t('monitoring.request_prompt_copied') : t('notification.copy_failed'),
+        copied ? 'success' : 'error'
+      );
+    },
+    [showNotification, t]
+  );
 
   const setCurrentAccountPage = useCallback(
     (page: number) => {
@@ -3423,6 +3472,7 @@ export function MonitoringCenterPage() {
                 <th>{t('monitoring.column_time')}</th>
                 <th>{t('monitoring.this_call_usage')}</th>
                 <th>{t('monitoring.this_call_cost')}</th>
+                <th>{t('monitoring.request_prompt_column')}</th>
               </tr>
             </thead>
             <tbody>
@@ -3498,12 +3548,25 @@ export function MonitoringCenterPage() {
                       </div>
                     </td>
                     <td>{hasPrices ? formatUsd(row.totalCost) : '--'}</td>
+                    <td>
+                      {row.requestId ? (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => openRequestPrompt(row)}
+                        >
+                          {t('monitoring.request_prompt_view')}
+                        </Button>
+                      ) : (
+                        '--'
+                      )}
+                    </td>
                   </tr>
                 );
               })}
               {realtimeLogRows.length === 0 ? (
                 <tr>
-                  <td colSpan={10}>{renderMonitoringEmptyState()}</td>
+                  <td colSpan={11}>{renderMonitoringEmptyState()}</td>
                 </tr>
               ) : null}
             </tbody>
@@ -3523,6 +3586,27 @@ export function MonitoringCenterPage() {
         />
       </MonitoringPanel>
 
+      <Modal
+        open={Boolean(promptRow)}
+        onClose={() => setPromptRow(null)}
+        title={t('monitoring.request_prompt_title')}
+        width={720}
+      >
+        {promptRow ? (
+          <RequestPromptView
+            t={t}
+            state={promptState}
+            meta={{
+              time: new Date(promptRow.timestampMs).toLocaleString(i18n.language),
+              apiKey: promptRow.apiKeyLabel,
+              model: promptRow.model,
+              tokens: formatCompactNumber(promptRow.totalTokens),
+            }}
+            onRetry={() => void loadRequestPrompt(promptRow)}
+            onCopy={(text) => void copyRequestPrompt(text)}
+          />
+        ) : null}
+      </Modal>
       <Modal
         open={isCustomRangeModalOpen}
         onClose={() => setIsCustomRangeModalOpen(false)}

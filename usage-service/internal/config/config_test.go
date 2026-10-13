@@ -153,3 +153,25 @@ func clearConfigEnv(t *testing.T) {
 		t.Setenv(key, "")
 	}
 }
+
+func TestLoadPromptRetentionDays(t *testing.T) {
+	t.Setenv(configEnvKey, filepath.Join(t.TempDir(), "config.json"))
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.PromptRetentionDays != 30 {
+		t.Fatalf("default PromptRetentionDays = %d, want 30", cfg.PromptRetentionDays)
+	}
+
+	t.Setenv("USAGE_PROMPT_RETENTION_DAYS", "0")
+	if cfg, _ = Load(); cfg.PromptRetentionDays != 0 {
+		t.Fatalf("PromptRetentionDays with 0 = %d, want 0", cfg.PromptRetentionDays)
+	}
+
+	t.Setenv("USAGE_PROMPT_RETENTION_DAYS", "7")
+	if cfg, _ = Load(); cfg.PromptRetentionDays != 7 {
+		t.Fatalf("PromptRetentionDays with 7 = %d, want 7", cfg.PromptRetentionDays)
+	}
+}

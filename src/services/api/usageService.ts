@@ -207,6 +207,14 @@ export interface UsageExportResponse {
 
 const USAGE_SERVICE_TIMEOUT_MS = 15 * 1000;
 const USAGE_SERVICE_TRANSFER_TIMEOUT_MS = 60 * 1000;
+export type RequestPromptStatus = 'pending' | 'ok' | 'unavailable' | 'unparsable' | 'not_found';
+
+export interface RequestPromptResponse {
+  request_id: string;
+  status: RequestPromptStatus;
+  question?: string;
+}
+
 export const USAGE_SERVICE_ID = 'cpa-manager';
 export const LEGACY_USAGE_SERVICE_ID = 'cpa-usage-service';
 export const USAGE_SERVICE_LAST_CPA_BASE_KEY = 'cpa-manager:last-cpa-base';
@@ -402,6 +410,27 @@ export const usageServiceApi = {
         params,
       });
       return response.data;
+    });
+  },
+
+  getRequestPrompt: async (
+    base: string,
+    managementKey: string | undefined,
+    requestId: string
+  ): Promise<RequestPromptResponse> => {
+    return withUsageServiceError(async () => {
+      try {
+        const response = await axios.get<RequestPromptResponse>(
+          buildUrl(base, `/v0/management/request-prompts/${encodeURIComponent(requestId)}`),
+          { timeout: USAGE_SERVICE_TIMEOUT_MS, headers: authHeaders(managementKey) }
+        );
+        return response.data;
+      } catch (err) {
+        if (axios.isAxiosError(err) && err.response?.status === 404) {
+          return { request_id: requestId, status: 'not_found' };
+        }
+        throw err;
+      }
     });
   },
 

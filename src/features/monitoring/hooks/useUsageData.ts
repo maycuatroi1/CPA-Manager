@@ -7,6 +7,7 @@ import {
   type ApiKeyAliasesResponse,
   type ModelPricesResponse,
   type ModelPriceSyncResponse,
+  type RequestPromptResponse,
   type UsageExportResponse,
   type UsageImportResponse,
 } from '@/services/api/usageService';
@@ -42,6 +43,7 @@ export interface UseUsageDataReturn {
   exportUsage: () => Promise<UsageExportResponse>;
   importUsage: (file: File) => Promise<UsageImportResponse>;
   loadUsage: () => Promise<void>;
+  getRequestPrompt: (requestId: string) => Promise<RequestPromptResponse>;
 }
 
 export interface UseUsageDataParams {
@@ -139,6 +141,17 @@ export function useUsageData({
     }
     return usageServiceApi.exportUsage(serviceBase, managementKey);
   }, [managementKey, resolveUsageServiceBase]);
+
+  const getRequestPrompt = useCallback(
+    async (requestId: string): Promise<RequestPromptResponse> => {
+      const serviceBase = await resolveUsageServiceBase();
+      if (!serviceBase) {
+        throw new Error('usage_service_unavailable');
+      }
+      return usageServiceApi.getRequestPrompt(serviceBase, managementKey, requestId);
+    },
+    [managementKey, resolveUsageServiceBase]
+  );
 
   const importUsageToApi = useCallback(
     async (file: File): Promise<UsageImportResponse> => {
@@ -265,5 +278,6 @@ export function useUsageData({
     exportUsage: exportUsageFromApi,
     importUsage: importUsageToApi,
     loadUsage,
+    getRequestPrompt,
   };
 }

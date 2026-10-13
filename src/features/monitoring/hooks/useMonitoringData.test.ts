@@ -47,6 +47,7 @@ const createMonitoringEventRow = (
   totalCost: overrides.totalCost ?? 0.12,
   taskKey: overrides.taskKey ?? 'task-1',
   searchText: overrides.searchText ?? 'amount myth resend',
+  requestId: overrides.requestId ?? '',
 });
 
 describe('buildAccountRows', () => {

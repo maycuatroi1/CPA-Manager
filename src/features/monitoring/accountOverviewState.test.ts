@@ -78,6 +78,7 @@ const createEventRow = (overrides: Partial<MonitoringEventRow> = {}): Monitoring
   totalCost: overrides.totalCost ?? 0.1,
   taskKey: overrides.taskKey ?? 'task-1',
   searchText: overrides.searchText ?? 'account@example.com codex gpt-4.1 default',
+  requestId: overrides.requestId ?? '',
 });
 
 describe('accountOverviewState', () => {

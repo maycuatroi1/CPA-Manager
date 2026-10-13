@@ -113,7 +113,9 @@ func Open(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite", path)
+	// Per-connection pragmas go in the DSN so every pooled connection gets
+	// them; a plain Exec only configures whichever connection runs it.
+	db, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(5000)&_pragma=synchronous(FULL)&_pragma=foreign_keys(1)")
 	if err != nil {
 		return nil, err
 	}
@@ -212,6 +214,17 @@ func (s *Store) init() error {
 			soft_limit integer not null default 0,
 			updated_at_ms integer not null
 		)`,
+		`create table if not exists request_prompts (
+			request_id text primary key,
+			status text not null,
+			question text,
+			attempts integer not null default 0,
+			next_attempt_ms integer not null,
+			event_ts_ms integer not null,
+			updated_at_ms integer not null
+		)`,
+		`create index if not exists idx_request_prompts_pending on request_prompts(status, next_attempt_ms)`,
+		`create index if not exists idx_request_prompts_event_ts on request_prompts(event_ts_ms)`,
 	}
 	for _, statement := range statements {
 		if _, err := s.db.Exec(statement); err != nil {
