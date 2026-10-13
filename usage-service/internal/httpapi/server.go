@@ -128,6 +128,10 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		s.withCORS(s.handleAPIKeyLimits)(w, r)
 		return
 	}
+	if strings.HasPrefix(r.URL.Path, "/v0/management/request-prompts/") {
+		s.withCORS(s.handleRequestPrompt)(w, r)
+		return
+	}
 	cleanUsagePath := strings.TrimRight(r.URL.Path, "/")
 	if cleanUsagePath == "/v0/management/usage" || strings.HasPrefix(cleanUsagePath, "/v0/management/usage/") {
 		s.withCORS(s.handleUsage)(w, r)
@@ -836,6 +840,31 @@ func (s *Server) handleUsageExport(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	w.Header().Set("Content-Disposition", `attachment; filename="usage-events.jsonl"`)
 	_, _ = w.Write(data)
+}
+
+func (s *Server) handleRequestPrompt(w http.ResponseWriter, r *http.Request) {
+	if !s.authorizeIfConfigured(w, r) {
+		return
+	}
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w)
+		return
+	}
+	requestID := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/v0/management/request-prompts/"))
+	if requestID == "" || strings.Contains(requestID, "/") {
+		writeError(w, http.StatusBadRequest, errors.New("request id is required"))
+		return
+	}
+	prompt, ok, err := s.store.GetPrompt(r.Context(), requestID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]any{"request_id": requestID, "status": "not_found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, prompt)
 }
 
 func (s *Server) handleUsageImport(w http.ResponseWriter, r *http.Request) {

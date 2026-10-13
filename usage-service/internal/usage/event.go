@@ -53,6 +53,7 @@ type Tokens struct {
 }
 
 type Detail struct {
+	RequestID            string `json:"request_id,omitempty"`
 	Timestamp            string `json:"timestamp"`
 	Source               string `json:"source"`
 	AuthIndex            string `json:"auth_index,omitempty"`
@@ -198,6 +199,7 @@ func BuildPayload(events []Event) Payload {
 			apiEntry.Models[model] = modelEntry
 		}
 		modelEntry.Details = append(modelEntry.Details, Detail{
+			RequestID:            event.RequestID,
 			Timestamp:            event.Timestamp,
 			Source:               event.Source,
 			AuthIndex:            event.AuthIndex,

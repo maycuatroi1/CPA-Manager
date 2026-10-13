@@ -26,6 +26,12 @@ type observedRequest struct {
 
 func newTestHandler(t *testing.T, upstreamURL string, saveSetup bool) http.Handler {
 	t.Helper()
+	handler, _ := newTestHandlerAndStore(t, upstreamURL, saveSetup)
+	return handler
+}
+
+func newTestHandlerAndStore(t *testing.T, upstreamURL string, saveSetup bool) (http.Handler, *store.Store) {
+	t.Helper()
 
 	cfg := config.Config{
 		DBPath:      filepath.Join(t.TempDir(), "usage.sqlite"),
@@ -54,7 +60,7 @@ func newTestHandler(t *testing.T, upstreamURL string, saveSetup bool) http.Handl
 	}
 
 	manager := collector.NewManager(cfg, db)
-	return New(cfg, db, manager).Handler()
+	return New(cfg, db, manager).Handler(), db
 }
 
 func newTestHandlerWithConfig(t *testing.T, cfg config.Config) http.Handler {
@@ -740,5 +746,64 @@ func TestUsageGetFiltersByTimeRangeAndSupportsGzip(t *testing.T) {
 	handler.ServeHTTP(rr, req)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("invalid start_ms status = %d, want 400", rr.Code)
+	}
+}
+
+func TestRequestPromptEndpoint(t *testing.T) {
+	handler, db := newTestHandlerAndStore(t, "http://127.0.0.1:1", true)
+	ctx := context.Background()
+	if err := db.EnqueuePrompts(ctx, []store.PromptEnqueue{{RequestID: "abc123", EventTSMS: 1}}, 0, 0); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	if err := db.SavePromptResult(ctx, "abc123", store.PromptStatusOK, "câu hỏi", 1); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	get := func(path string, auth bool) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		if auth {
+			req.Header.Set("Authorization", "Bearer management-key")
+		}
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		return rr
+	}
+
+	if rr := get("/v0/management/request-prompts/abc123", false); rr.Code != http.StatusUnauthorized {
+		t.Fatalf("no auth status = %d", rr.Code)
+	}
+
+	rr := get("/v0/management/request-prompts/abc123", true)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rr.Code, rr.Body.String())
+	}
+	var found store.RequestPrompt
+	if err := json.Unmarshal(rr.Body.Bytes(), &found); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if found.Status != store.PromptStatusOK || found.Question != "câu hỏi" || found.RequestID != "abc123" {
+		t.Fatalf("prompt = %#v", found)
+	}
+
+	rr = get("/v0/management/request-prompts/missing", true)
+	if rr.Code != http.StatusNotFound || !strings.Contains(rr.Body.String(), `"not_found"`) {
+		t.Fatalf("missing status = %d body = %s", rr.Code, rr.Body.String())
+	}
+
+	if rr := get("/v0/management/request-prompts/", true); rr.Code != http.StatusBadRequest {
+		t.Fatalf("empty id status = %d", rr.Code)
+	}
+}
+
+func TestUsagePayloadIncludesRequestID(t *testing.T) {
+	handler := newTestHandler(t, "http://127.0.0.1:1", true)
+	postUsageImport(t, handler, `{"timestamp":1778000001000,"model":"m","endpoint":"POST /v1/messages","request_id":"rid-7"}`)
+
+	req := httptest.NewRequest(http.MethodGet, "/v0/management/usage", nil)
+	req.Header.Set("Authorization", "Bearer management-key")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"request_id":"rid-7"`) {
+		t.Fatalf("status = %d body = %s", rr.Code, rr.Body.String())
 	}
 }
