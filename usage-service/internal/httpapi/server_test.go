@@ -2,8 +2,10 @@ package httpapi
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
+	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -679,4 +681,64 @@ func TestModelPricesSyncFromLiteLLMFormat(t *testing.T) {
 
 func closeFloat(left float64, right float64) bool {
 	return math.Abs(left-right) < 0.0000001
+}
+
+func TestUsageGetFiltersByTimeRangeAndSupportsGzip(t *testing.T) {
+	handler := newTestHandler(t, "http://127.0.0.1:1", true)
+	payload := `{"timestamp":1778000001000,"model":"m","endpoint":"POST /v1/responses","request_id":"r1"}
+{"timestamp":1778000002000,"model":"m","endpoint":"POST /v1/responses","request_id":"r2"}
+{"timestamp":1778000003000,"model":"m","endpoint":"POST /v1/responses","request_id":"r3"}`
+	postUsageImport(t, handler, payload)
+
+	getTotal := func(query string, gzipped bool) int {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "/v0/management/usage"+query, nil)
+		req.Header.Set("Authorization", "Bearer management-key")
+		if gzipped {
+			req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+		}
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("%s status = %d, body = %s", query, rr.Code, rr.Body.String())
+		}
+		var body io.Reader = rr.Body
+		if gzipped {
+			if rr.Header().Get("Content-Encoding") != "gzip" {
+				t.Fatalf("%s Content-Encoding = %q, want gzip", query, rr.Header().Get("Content-Encoding"))
+			}
+			zr, err := gzip.NewReader(rr.Body)
+			if err != nil {
+				t.Fatalf("gzip reader: %v", err)
+			}
+			body = zr
+		} else if rr.Header().Get("Content-Encoding") != "" {
+			t.Fatalf("%s unexpected Content-Encoding %q", query, rr.Header().Get("Content-Encoding"))
+		}
+		var response struct {
+			TotalRequests int `json:"total_requests"`
+		}
+		if err := json.NewDecoder(body).Decode(&response); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		return response.TotalRequests
+	}
+
+	if got := getTotal("", false); got != 3 {
+		t.Fatalf("unbounded total = %d, want 3", got)
+	}
+	if got := getTotal("?start_ms=1778000002000", false); got != 2 {
+		t.Fatalf("start_ms total = %d, want 2", got)
+	}
+	if got := getTotal("?start_ms=1778000001500&end_ms=1778000002500", true); got != 1 {
+		t.Fatalf("bounded total = %d, want 1", got)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v0/management/usage?start_ms=abc", nil)
+	req.Header.Set("Authorization", "Bearer management-key")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("invalid start_ms status = %d, want 400", rr.Code)
+	}
 }

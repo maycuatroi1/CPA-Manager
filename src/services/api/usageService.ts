@@ -387,11 +387,19 @@ export const usageServiceApi = {
     });
   },
 
-  getUsage: async (base: string, managementKey?: string): Promise<UsagePayload> => {
+  getUsage: async (
+    base: string,
+    managementKey?: string,
+    range?: { startMs?: number; endMs?: number }
+  ): Promise<UsagePayload> => {
     return withUsageServiceError(async () => {
+      const params: Record<string, number> = {};
+      if (range?.startMs !== undefined) params.start_ms = Math.floor(range.startMs);
+      if (range?.endMs !== undefined) params.end_ms = Math.floor(range.endMs);
       const response = await axios.get<UsagePayload>(buildUrl(base, '/v0/management/usage'), {
         timeout: USAGE_SERVICE_TIMEOUT_MS,
         headers: authHeaders(managementKey),
+        params,
       });
       return response.data;
     });

@@ -992,9 +992,30 @@ func (s *Store) AddDeadLetter(ctx context.Context, payload string, parseErr erro
 }
 
 func (s *Store) RecentEvents(ctx context.Context, limit int) ([]usage.Event, error) {
+	return s.RecentEventsInRange(ctx, limit, 0, 0)
+}
+
+// RecentEventsInRange returns the newest events whose timestamp_ms falls within
+// [startMS, endMS]. A non-positive bound leaves that side of the range open.
+func (s *Store) RecentEventsInRange(ctx context.Context, limit int, startMS int64, endMS int64) ([]usage.Event, error) {
 	if limit <= 0 {
 		limit = 50000
 	}
+	where := make([]string, 0, 2)
+	args := make([]any, 0, 3)
+	if startMS > 0 {
+		where = append(where, "timestamp_ms >= ?")
+		args = append(args, startMS)
+	}
+	if endMS > 0 {
+		where = append(where, "timestamp_ms <= ?")
+		args = append(args, endMS)
+	}
+	whereClause := ""
+	if len(where) > 0 {
+		whereClause = "where " + strings.Join(where, " and ")
+	}
+	args = append(args, limit)
 	rows, err := s.db.QueryContext(ctx, `select
 		request_id, event_hash, timestamp_ms, timestamp, provider, model, endpoint, method, path,
 		auth_type, auth_index, source, source_hash, api_key_hash,
@@ -1002,8 +1023,9 @@ func (s *Store) RecentEvents(ctx context.Context, limit int) ([]usage.Event, err
 		input_tokens, output_tokens, reasoning_tokens, cached_tokens, cache_tokens, total_tokens,
 		latency_ms, failed, raw_json, created_at_ms
 		from usage_events
+		`+whereClause+`
 		order by timestamp_ms desc, id desc
-		limit ?`, limit)
+		limit ?`, args...)
 	if err != nil {
 		return nil, err
 	}

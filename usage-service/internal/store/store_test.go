@@ -142,3 +142,52 @@ func TestStoreAPIKeyAliases(t *testing.T) {
 		t.Fatalf("aliases after delete = %#v", aliases)
 	}
 }
+
+func TestStoreRecentEventsInRangeFiltersByTimestamp(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "usage.sqlite"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = db.Close()
+	})
+
+	events := make([]usage.Event, 0, 5)
+	for i, ts := range []int64{1_000, 2_000, 3_000, 4_000, 5_000} {
+		events = append(events, usage.Event{
+			EventHash:   "range-" + string(rune('a'+i)),
+			TimestampMS: ts,
+			Model:       "gpt-test",
+			Endpoint:    "POST /v1/responses",
+		})
+	}
+	if _, err := db.InsertEvents(context.Background(), events); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	cases := []struct {
+		name    string
+		startMS int64
+		endMS   int64
+		want    []int64
+	}{
+		{name: "unbounded", want: []int64{5_000, 4_000, 3_000, 2_000, 1_000}},
+		{name: "start only", startMS: 3_000, want: []int64{5_000, 4_000, 3_000}},
+		{name: "end only", endMS: 2_000, want: []int64{2_000, 1_000}},
+		{name: "both inclusive", startMS: 2_000, endMS: 4_000, want: []int64{4_000, 3_000, 2_000}},
+	}
+	for _, tc := range cases {
+		got, err := db.RecentEventsInRange(context.Background(), 10, tc.startMS, tc.endMS)
+		if err != nil {
+			t.Fatalf("%s: recent events in range: %v", tc.name, err)
+		}
+		if len(got) != len(tc.want) {
+			t.Fatalf("%s: len = %d, want %d", tc.name, len(got), len(tc.want))
+		}
+		for i, event := range got {
+			if event.TimestampMS != tc.want[i] {
+				t.Fatalf("%s: got[%d] = %d, want %d", tc.name, i, event.TimestampMS, tc.want[i])
+			}
+		}
+	}
+}
