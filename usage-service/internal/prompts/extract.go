@@ -19,7 +19,8 @@ const (
 	bodySectionTitle = "=== REQUEST BODY ==="
 )
 
-var sectionHeaderPattern = regexp.MustCompile(`(?m)^=== [A-Z][A-Z ]* ===\s*$`)
+// Section titles may carry numbers, e.g. "=== API REQUEST 1 ===".
+var sectionHeaderPattern = regexp.MustCompile(`(?m)^=== [A-Z][A-Z0-9 ]* ===\s*$`)
 
 // autoTagPatterns match blocks that clients such as Claude Code inject into
 // user turns; they are not text the person typed.

@@ -121,3 +121,14 @@ func TestExtractQuestionTruncatesOnRuneBoundary(t *testing.T) {
 		t.Fatalf("bad truncation suffix/utf8: %q", got[len(got)-20:])
 	}
 }
+
+// Real CLIProxyAPI logs put upstream sections (titles with digits) right after
+// the request body.
+func TestExtractQuestionStopsAtNumberedSections(t *testing.T) {
+	log := "=== REQUEST BODY ===\n{\"messages\":[{\"role\":\"user\",\"content\":\"thật\"}]}\n\n" +
+		"=== API REQUEST 1 ===\n{\"messages\":[]}\n\n=== API RESPONSE 1 ===\ndata: {}\n\n=== RESPONSE ===\nStatus: 200\n"
+	got, status := ExtractQuestion([]byte(log))
+	if status != store.PromptStatusOK || got != "thật" {
+		t.Fatalf("got (%q, %q)", got, status)
+	}
+}
