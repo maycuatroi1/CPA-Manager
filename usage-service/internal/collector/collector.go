@@ -3,15 +3,23 @@ package collector
 import (
 	"context"
 	"errors"
+	"log"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/seakee/cpa-manager/usage-service/internal/config"
 	"github.com/seakee/cpa-manager/usage-service/internal/httpqueue"
+	"github.com/seakee/cpa-manager/usage-service/internal/prompts"
 	"github.com/seakee/cpa-manager/usage-service/internal/resp"
 	"github.com/seakee/cpa-manager/usage-service/internal/store"
 	"github.com/seakee/cpa-manager/usage-service/internal/usage"
+)
+
+// Overridable in tests.
+var (
+	promptInitialDelay   = 3 * time.Second
+	promptWorkerInterval = 2 * time.Second
 )
 
 type Status struct {
@@ -105,6 +113,9 @@ func (m *Manager) setStatus(update func(*Status)) {
 }
 
 func (m *Manager) run(ctx context.Context, cfg RuntimeConfig) {
+	if retention := m.promptRetention(); retention > 0 {
+		go prompts.NewWorker(m.store, promptWorkerInterval).Run(ctx, cfg.CPAUpstreamURL, cfg.ManagementKey, retention)
+	}
 	mode := collectorMode(valueOr(cfg.CollectorMode, m.base.CollectorMode))
 
 	if mode == "http" {
@@ -269,6 +280,7 @@ func (m *Manager) processItems(ctx context.Context, cfg RuntimeConfig, items []s
 	if err != nil {
 		return err
 	}
+	m.enqueuePrompts(ctx, events)
 	if result.Inserted > 0 || result.Skipped > 0 {
 		m.setStatus(func(status *Status) {
 			status.LastInsertedAt = time.Now().UnixMilli()
@@ -277,6 +289,27 @@ func (m *Manager) processItems(ctx context.Context, cfg RuntimeConfig, items []s
 		})
 	}
 	return nil
+}
+
+func (m *Manager) promptRetention() time.Duration {
+	return time.Duration(m.base.PromptRetentionDays) * 24 * time.Hour
+}
+
+func (m *Manager) enqueuePrompts(ctx context.Context, events []usage.Event) {
+	if m.promptRetention() <= 0 || len(events) == 0 {
+		return
+	}
+	items := make([]store.PromptEnqueue, 0, len(events))
+	for _, event := range events {
+		if strings.TrimSpace(event.RequestID) == "" {
+			continue
+		}
+		items = append(items, store.PromptEnqueue{RequestID: event.RequestID, EventTSMS: event.TimestampMS})
+	}
+	now := time.Now().UnixMilli()
+	if err := m.store.EnqueuePrompts(ctx, items, now+promptInitialDelay.Milliseconds(), now); err != nil {
+		log.Printf("collector: enqueue prompts failed: %v", err)
+	}
 }
 
 func (m *Manager) enrichAccountSnapshots(ctx context.Context, cfg RuntimeConfig, events []usage.Event) {
