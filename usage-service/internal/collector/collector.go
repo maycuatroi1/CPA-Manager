@@ -34,6 +34,7 @@ type Status struct {
 	TotalSkipped   int64  `json:"totalSkipped"`
 	DeadLetters    int64  `json:"deadLetters"`
 	LastError      string `json:"lastError,omitempty"`
+	PromptsError   string `json:"promptsError,omitempty"`
 }
 
 type RuntimeConfig struct {
@@ -84,6 +85,7 @@ func (m *Manager) Start(ctx context.Context, cfg RuntimeConfig) {
 	m.status.Transport = ""
 	m.status.Queue = valueOr(cfg.Queue, m.base.Queue)
 	m.status.LastError = ""
+	m.status.PromptsError = ""
 
 	runCtx, cancel := context.WithCancel(ctx)
 	m.cancel = cancel
@@ -114,7 +116,17 @@ func (m *Manager) setStatus(update func(*Status)) {
 
 func (m *Manager) run(ctx context.Context, cfg RuntimeConfig) {
 	if retention := m.promptRetention(); retention > 0 {
-		go prompts.NewWorker(m.store, promptWorkerInterval).Run(ctx, cfg.CPAUpstreamURL, cfg.ManagementKey, retention)
+		worker := prompts.NewWorker(m.store, promptWorkerInterval)
+		worker.OnError = func(err error) {
+			message := ""
+			if err != nil {
+				message = err.Error()
+			}
+			m.setStatus(func(status *Status) {
+				status.PromptsError = message
+			})
+		}
+		go worker.Run(ctx, cfg.CPAUpstreamURL, cfg.ManagementKey, retention)
 	}
 	mode := collectorMode(valueOr(cfg.CollectorMode, m.base.CollectorMode))
 

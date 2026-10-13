@@ -207,3 +207,41 @@ func TestManagerSkipsPromptsWhenRetentionDisabled(t *testing.T) {
 		t.Fatalf("prompt must not be enqueued when retention is 0")
 	}
 }
+
+func TestManagerReportsPromptFetchErrorsInStatus(t *testing.T) {
+	previousDelay, previousInterval := promptInitialDelay, promptWorkerInterval
+	promptInitialDelay, promptWorkerInterval = 0, 20*time.Millisecond
+	t.Cleanup(func() { promptInitialDelay, promptWorkerInterval = previousDelay, previousInterval })
+
+	var calls int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v0/management/usage-queue":
+			if atomic.AddInt32(&calls, 1) == 1 {
+				_, _ = w.Write([]byte(`[{"timestamp":"` + time.Now().UTC().Format(time.RFC3339) + `","request_id":"req-401","model":"m","input_tokens":1}]`))
+				return
+			}
+			_, _ = w.Write([]byte(`[]`))
+		case strings.HasPrefix(r.URL.Path, "/v0/management/request-log-by-id/"):
+			http.Error(w, "forbidden", http.StatusForbidden)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(upstream.Close)
+
+	db := newTestStore(t)
+	cfg := testConfig(t, "http")
+	cfg.PromptRetentionDays = 30
+	manager := NewManager(cfg, db)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	manager.Start(ctx, RuntimeConfig{CPAUpstreamURL: upstream.URL, ManagementKey: "management-key"})
+
+	waitFor(t, func() bool {
+		return strings.Contains(manager.Status().PromptsError, "unauthorized")
+	})
+	if status := manager.Status(); status.Collector == "error" {
+		t.Fatalf("prompt errors must not mark the usage collector as failed: %#v", status)
+	}
+}

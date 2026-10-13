@@ -3,6 +3,7 @@ package prompts
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -124,5 +125,41 @@ func TestWorkerPruneDeletesOldPrompts(t *testing.T) {
 	}
 	if _, ok, _ := db.GetPrompt(context.Background(), "abc123"); ok {
 		t.Fatalf("prompt older than retention should be deleted")
+	}
+}
+
+func TestWorkerBacksOffWhileUpstreamFails(t *testing.T) {
+	worker := NewWorker(nil, 2*time.Second)
+	delay := worker.interval
+	var seen []time.Duration
+	for i := 0; i < 10; i++ {
+		delay = worker.nextDelay(ErrUnauthorized, delay)
+		seen = append(seen, delay)
+	}
+	if seen[0] != 4*time.Second || seen[1] != 8*time.Second {
+		t.Fatalf("backoff should double from the interval, got %v", seen[:2])
+	}
+	if seen[len(seen)-1] != maxErrorBackoff {
+		t.Fatalf("backoff should cap at %v, got %v", maxErrorBackoff, seen[len(seen)-1])
+	}
+	if got := worker.nextDelay(nil, delay); got != worker.interval {
+		t.Fatalf("success should reset delay to interval, got %v", got)
+	}
+}
+
+func TestWorkerReportsErrorsOnlyWhenStateChanges(t *testing.T) {
+	worker := NewWorker(nil, time.Second)
+	var reported []string
+	worker.OnError = func(err error) { reported = append(reported, fmt.Sprint(err)) }
+
+	worker.report(ErrUnauthorized)
+	worker.report(ErrUnauthorized)
+	worker.report(nil)
+	worker.report(nil)
+	worker.report(ErrUnauthorized)
+
+	want := []string{ErrUnauthorized.Error(), "<nil>", ErrUnauthorized.Error()}
+	if fmt.Sprint(reported) != fmt.Sprint(want) {
+		t.Fatalf("reported = %q, want %q", reported, want)
 	}
 }

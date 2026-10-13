@@ -17,6 +17,7 @@ const (
 	workerBatchSize = 5
 	maxLogBytes     = 20 << 20
 	pruneEvery      = time.Hour
+	maxErrorBackoff = 5 * time.Minute
 )
 
 // retryDelays is the backoff after each failed fetch; one more failure than
@@ -32,6 +33,11 @@ type Worker struct {
 	client   *http.Client
 	interval time.Duration
 	now      func() time.Time
+
+	// OnError, when set, is called with the worker's current error whenever
+	// it changes (nil once fetching works again).
+	OnError   func(error)
+	lastError string
 }
 
 func NewWorker(st *store.Store, interval time.Duration) *Worker {
@@ -50,9 +56,8 @@ func (w *Worker) Run(ctx context.Context, baseURL string, managementKey string, 
 	if strings.TrimSpace(baseURL) == "" || strings.TrimSpace(managementKey) == "" || retention <= 0 {
 		return
 	}
-	ticker := time.NewTicker(w.interval)
-	defer ticker.Stop()
 	var lastPrune time.Time
+	delay := w.interval
 	for {
 		if w.now().Sub(lastPrune) >= pruneEvery {
 			if err := w.Prune(ctx, retention); err != nil && ctx.Err() == nil {
@@ -60,14 +65,55 @@ func (w *Worker) Run(ctx context.Context, baseURL string, managementKey string, 
 			}
 			lastPrune = w.now()
 		}
-		if err := w.RunOnce(ctx, baseURL, managementKey); err != nil && ctx.Err() == nil {
-			log.Printf("prompts: %v", err)
+		err := w.RunOnce(ctx, baseURL, managementKey)
+		if ctx.Err() != nil {
+			return
 		}
+		w.report(err)
+		delay = w.nextDelay(err, delay)
+		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return
-		case <-ticker.C:
+		case <-timer.C:
 		}
+	}
+}
+
+// nextDelay backs off exponentially while upstream keeps failing so a bad key
+// or an outage is not retried every tick.
+func (w *Worker) nextDelay(err error, previous time.Duration) time.Duration {
+	if err == nil {
+		return w.interval
+	}
+	next := previous * 2
+	if next < w.interval*2 {
+		next = w.interval * 2
+	}
+	if next > maxErrorBackoff {
+		next = maxErrorBackoff
+	}
+	return next
+}
+
+// report logs and forwards the error only when it changes.
+func (w *Worker) report(err error) {
+	current := ""
+	if err != nil {
+		current = err.Error()
+	}
+	if current == w.lastError {
+		return
+	}
+	w.lastError = current
+	if err != nil {
+		log.Printf("prompts: %v", err)
+	} else {
+		log.Printf("prompts: fetching recovered")
+	}
+	if w.OnError != nil {
+		w.OnError(err)
 	}
 }
 
