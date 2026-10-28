@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/Button';
 import { CLAUDE_CONFIG } from '@/components/quota/quotaConfigs';
 import { QuotaProgressBar } from '@/components/quota/QuotaCard';
-import { apiCallApi, getApiCallErrorMessage } from '@/services/api';
+import { apiCallApi, getApiCallErrorMessage, providersApi } from '@/services/api';
 import type { ClaudeQuotaState, ProviderKeyConfig } from '@/types';
 import { parseClaudeRateLimitWindows } from '@/utils/quota/claudeRateLimitHeaders';
 import quotaStyles from '@/pages/QuotaPage.module.scss';
@@ -22,12 +22,24 @@ export function ClaudeKeyQuota({ config }: { config: ProviderKeyConfig }) {
   const { t } = useTranslation();
   const [quota, setQuota] = useState<ClaudeQuotaState>({ status: 'idle', windows: [] });
 
-  const authIndex = config.authIndex;
-  if (!authIndex) return null;
+  // The AI Providers list is built from /config, which carries no auth-index;
+  // only /claude-api-key does, so look the entry up there when it is missing.
+  const resolveAuthIndex = async (): Promise<string> => {
+    if (config.authIndex) return config.authIndex;
+    const apiKey = config.apiKey.trim();
+    const baseUrl = (config.baseUrl ?? '').trim();
+    const entries = await providersApi.getClaudeConfigs();
+    const match = entries.find(
+      (entry) => entry.apiKey.trim() === apiKey && (entry.baseUrl ?? '').trim() === baseUrl
+    );
+    if (!match?.authIndex) throw new Error(t('claude_quota.missing_auth_index'));
+    return match.authIndex;
+  };
 
   const refresh = async () => {
     setQuota({ status: 'loading', windows: [] });
     try {
+      const authIndex = await resolveAuthIndex();
       const baseUrl = (config.baseUrl || DEFAULT_BASE_URL).replace(/\/+$/, '');
       const result = await apiCallApi.request({
         authIndex,
