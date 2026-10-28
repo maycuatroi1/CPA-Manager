@@ -714,6 +714,7 @@
     "fetch_all": "Получить все"
   },
   "claude_quota": {
+    "setup_token_probe_hint": "Ключи setup-token не могут читать /oauth/usage. Проверка отправляет крошечный запрос (1 выходной токен) и читает заголовки лимитов.",
     "title": "Квота Claude",
     "empty_title": "Файлы авторизации Claude OAuth отсутствуют",
     "empty_desc": "Войдите через Claude OAuth, чтобы увидеть квоту.",
