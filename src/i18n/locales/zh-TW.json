@@ -717,6 +717,7 @@
     "fetch_all": "取得全部"
   },
   "claude_quota": {
+    "check_button": "額度",
     "setup_token_probe_hint": "setup-token 金鑰無法讀取 /oauth/usage。檢查時會送出一個極小的請求（1 個輸出 token）並讀取限流回應標頭。",
     "title": "Claude 配額",
     "empty_title": "暫無 Claude OAuth 驗證",
