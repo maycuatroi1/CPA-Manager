@@ -719,6 +719,7 @@
     "fetch_all": "获取全部"
   },
   "claude_quota": {
+    "check_button": "额度",
     "setup_token_probe_hint": "setup-token 密钥无法读取 /oauth/usage。检查时会发送一个极小的请求（1 个输出 token）并读取限流响应头。",
     "title": "Claude 额度",
     "empty_title": "暂无 Claude OAuth 认证",

@@ -1,18 +1,19 @@
-import { Fragment, useMemo } from 'react';
+import { Fragment, useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useProviderKeyNames } from '@/hooks/useProviderKeyNames';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import iconClaude from '@/assets/icons/claude.svg';
-import type { ProviderKeyConfig } from '@/types';
+import type { ClaudeQuotaState, ProviderKeyConfig } from '@/types';
 import { maskApiKey } from '@/utils/format';
 import { statusBarDataFromRecentRequests } from '@/utils/recentRequests';
 import { isClaudeOAuthToken } from '@/utils/quota/claudeRateLimitHeaders';
 import styles from '@/pages/AiProvidersPage.module.scss';
 import { ProviderList } from '../ProviderList';
 import { ProviderStatusBar } from '../ProviderStatusBar';
-import { ClaudeKeyQuota } from './ClaudeKeyQuota';
+import { ClaudeKeyQuotaPanel } from './ClaudeKeyQuota';
+import { fetchClaudeKeyQuota } from './fetchClaudeKeyQuota';
 import {
   getProviderConfigKey,
   getProviderRecentBuckets,
@@ -20,6 +21,8 @@ import {
   hasDisableAllModelsRule,
   type ProviderRecentUsageMap,
 } from '../utils';
+
+const quotaKey = (item: ProviderKeyConfig) => `${item.baseUrl ?? ''}|${item.apiKey}`;
 
 interface ClaudeSectionProps {
   configs: ProviderKeyConfig[];
@@ -48,6 +51,22 @@ export function ClaudeSection({
   const { getName: getKeyName } = useProviderKeyNames();
   const actionsDisabled = disableControls || loading || isSwitching;
   const toggleDisabled = disableControls || loading || isSwitching;
+  const [quotaByKey, setQuotaByKey] = useState<Record<string, ClaudeQuotaState>>({});
+
+  const checkQuota = useCallback(
+    async (item: ProviderKeyConfig) => {
+      const key = quotaKey(item);
+      setQuotaByKey((prev) => ({ ...prev, [key]: { status: 'loading', windows: [] } }));
+      try {
+        const windows = await fetchClaudeKeyQuota(item, t);
+        setQuotaByKey((prev) => ({ ...prev, [key]: { status: 'success', windows } }));
+      } catch (err: unknown) {
+        const error = err instanceof Error ? err.message : String(err);
+        setQuotaByKey((prev) => ({ ...prev, [key]: { status: 'error', windows: [], error } }));
+      }
+    },
+    [t]
+  );
 
   const statusBarCache = useMemo(() => {
     const cache = new Map<string, ReturnType<typeof statusBarDataFromRecentRequests>>();
@@ -92,12 +111,26 @@ export function ClaudeSection({
           actionsDisabled={actionsDisabled}
           getRowDisabled={(item) => hasDisableAllModelsRule(item.excludedModels)}
           renderExtraActions={(item, index) => (
-            <ToggleSwitch
-              label={t('ai_providers.config_toggle_label')}
-              checked={!hasDisableAllModelsRule(item.excludedModels)}
-              disabled={toggleDisabled}
-              onChange={(value) => void onToggle(index, value)}
-            />
+            <>
+              {isClaudeOAuthToken(item.apiKey) && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  title={t('claude_quota.setup_token_probe_hint')}
+                  loading={quotaByKey[quotaKey(item)]?.status === 'loading'}
+                  disabled={actionsDisabled}
+                  onClick={() => void checkQuota(item)}
+                >
+                  {t('claude_quota.check_button')}
+                </Button>
+              )}
+              <ToggleSwitch
+                label={t('ai_providers.config_toggle_label')}
+                checked={!hasDisableAllModelsRule(item.excludedModels)}
+                disabled={toggleDisabled}
+                onChange={(value) => void onToggle(index, value)}
+              />
+            </>
           )}
           renderContent={(item, index) => {
             const stats = getProviderTotalStats(
@@ -224,7 +257,7 @@ export function ClaudeSection({
                   </span>
                 </div>
                 <ProviderStatusBar statusData={statusData} />
-                {isClaudeOAuthToken(item.apiKey) && <ClaudeKeyQuota config={item} />}
+                <ClaudeKeyQuotaPanel quota={quotaByKey[quotaKey(item)]} />
               </Fragment>
             );
           }}

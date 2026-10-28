@@ -1228,6 +1228,12 @@ $openai-toolbar-control-height: 36px;
   border-radius: $radius-md;
 }
 
+// Setup-token quota result inside a Claude key card
+.keyQuotaPanel {
+  max-width: 420px;
+  margin-top: $spacing-sm;
+}
+
 // Extra "name" column, shown only when Usage Service can store key names
 .keyTableWithName .keyTableHeader,
 .keyTableWithName .keyTableRow {
