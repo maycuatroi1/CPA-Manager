@@ -8,9 +8,11 @@ import iconClaude from '@/assets/icons/claude.svg';
 import type { ProviderKeyConfig } from '@/types';
 import { maskApiKey } from '@/utils/format';
 import { statusBarDataFromRecentRequests } from '@/utils/recentRequests';
+import { isClaudeOAuthToken } from '@/utils/quota/claudeRateLimitHeaders';
 import styles from '@/pages/AiProvidersPage.module.scss';
 import { ProviderList } from '../ProviderList';
 import { ProviderStatusBar } from '../ProviderStatusBar';
+import { ClaudeKeyQuota } from './ClaudeKeyQuota';
 import {
   getProviderConfigKey,
   getProviderRecentBuckets,
@@ -222,6 +224,7 @@ export function ClaudeSection({
                   </span>
                 </div>
                 <ProviderStatusBar statusData={statusData} />
+                {isClaudeOAuthToken(item.apiKey) && <ClaudeKeyQuota config={item} />}
               </Fragment>
             );
           }}
