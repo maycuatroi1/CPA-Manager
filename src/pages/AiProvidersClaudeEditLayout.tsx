@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
+import { useProviderKeyNameDraft, type ProviderKeyNameDraft } from '@/hooks/useProviderKeyNames';
 import { providersApi } from '@/services/api';
 import { useAuthStore, useClaudeEditDraftStore, useConfigStore, useNotificationStore } from '@/stores';
 import type { ProviderKeyConfig } from '@/types';
@@ -28,6 +29,7 @@ export type ClaudeEditOutletContext = {
   saving: boolean;
   form: ProviderFormState;
   setForm: Dispatch<SetStateAction<ProviderFormState>>;
+  keyName: ProviderKeyNameDraft;
   testModel: string;
   setTestModel: Dispatch<SetStateAction<string>>;
   testStatus: TestStatus;
@@ -193,6 +195,7 @@ export function AiProvidersClaudeEditLayout() {
   }, [configs, editIndex]);
 
   const invalidIndex = editIndex !== null && !initialData;
+  const keyName = useProviderKeyNameDraft('claude', initialData?.apiKey ?? '');
 
   const availableModels = useMemo(
     () => form.modelEntries.map((entry) => entry.name.trim()).filter(Boolean),
@@ -317,7 +320,8 @@ export function AiProvidersClaudeEditLayout() {
       isHeadersDirty ||
       isModelsDirty ||
       isExcludedModelsDirty ||
-      isCloakDirty);
+      isCloakDirty ||
+      keyName.isDirty);
   const editorRootPath = useMemo(() => {
     if (hasIndexParam) {
       return `/ai-providers/claude/${params.index ?? ''}`;
@@ -431,6 +435,14 @@ export function AiProvidersClaudeEditLayout() {
       setConfigs(nextList);
       updateConfigValue('claude-api-key', nextList);
       clearCache('claude-api-key');
+      try {
+        await keyName.commit(payload.apiKey);
+      } catch (nameErr: unknown) {
+        showNotification(
+          `${t('ai_providers.key_name_save_failed')}: ${getErrorMessage(nameErr)}`,
+          'warning'
+        );
+      }
       showNotification(
         editIndex !== null ? t('notification.claude_config_updated') : t('notification.claude_config_added'),
         'success'
@@ -454,6 +466,7 @@ export function AiProvidersClaudeEditLayout() {
     handleBack,
     invalidIndex,
     invalidIndexParam,
+    keyName,
     resolvedLoading,
     setDraftBaseline,
     saving,
@@ -474,6 +487,7 @@ export function AiProvidersClaudeEditLayout() {
         saving,
         form,
         setForm,
+        keyName,
         testModel,
         setTestModel,
         testStatus,

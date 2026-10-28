@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
+import { useProviderKeyNames } from '@/hooks/useProviderKeyNames';
+import { useProviderKeyNamesStore } from '@/stores/useProviderKeyNamesStore';
 import { providersApi } from '@/services/api';
 import { useAuthStore, useConfigStore, useNotificationStore, useOpenAIEditDraftStore } from '@/stores';
 import { entriesToModels, modelsToEntries } from '@/components/ui/modelInputListUtils';
@@ -417,10 +419,25 @@ export function AiProvidersOpenAIEditLayout() {
     if (!baseline) return false;
     return !areNormalizedApiKeyEntriesEqual(baseline.apiKeyEntries, normalizedApiKeyEntries);
   }, [baseline, normalizedApiKeyEntries]);
+  const { getName: getKeyName, available: keyNamesAvailable } = useProviderKeyNames();
+  const saveKeyName = useProviderKeyNamesStore((state) => state.saveName);
+  const editedKeyNames = useMemo(
+    () =>
+      keyNamesAvailable
+        ? form.apiKeyEntries.filter(
+            (entry) =>
+              entry.displayName !== undefined &&
+              entry.apiKey.trim() &&
+              entry.displayName.trim() !== getKeyName('openai', entry.apiKey)
+          )
+        : [],
+    [form.apiKeyEntries, getKeyName, keyNamesAvailable]
+  );
   const isDirty =
     Boolean(draft?.initialized) &&
     baseline !== null &&
-    (baseline.name !== form.name.trim() ||
+    (editedKeyNames.length > 0 ||
+      baseline.name !== form.name.trim() ||
       baseline.priority !== normalizedPriority ||
       baseline.prefix !== form.prefix.trim() ||
       baseline.baseUrl !== form.baseUrl.trim() ||
@@ -502,6 +519,16 @@ export function AiProvidersOpenAIEditLayout() {
 
       setProviders(syncedProviders);
       updateConfigValue('openai-compatibility', syncedProviders);
+      try {
+        for (const entry of editedKeyNames) {
+          await saveKeyName('openai', entry.apiKey, entry.displayName ?? '');
+        }
+      } catch (nameErr: unknown) {
+        showNotification(
+          `${t('ai_providers.key_name_save_failed')}: ${getErrorMessage(nameErr)}`,
+          'warning'
+        );
+      }
       showNotification(
         editIndex !== null
           ? t('notification.openai_provider_updated')
@@ -520,10 +547,12 @@ export function AiProvidersOpenAIEditLayout() {
     allowNextNavigation,
     draftKey,
     editIndex,
+    editedKeyNames,
     form,
     handleBack,
     initialData?.disabled,
     providers,
+    saveKeyName,
     setDraftBaseline,
     showNotification,
     t,

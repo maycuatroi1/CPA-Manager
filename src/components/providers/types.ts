@@ -6,6 +6,9 @@ export interface ModelEntry {
   alias: string;
 }
 
+/** displayName is form-only: undefined means "not edited", it never goes into CPA config. */
+export type OpenAIFormApiKeyEntry = ApiKeyEntry & { displayName?: string };
+
 export interface OpenAIFormState {
   name: string;
   priority?: number;
@@ -14,7 +17,7 @@ export interface OpenAIFormState {
   headers: HeaderEntry[];
   testModel?: string;
   modelEntries: ModelEntry[];
-  apiKeyEntries: ApiKeyEntry[];
+  apiKeyEntries: OpenAIFormApiKeyEntry[];
 }
 
 export interface AmpcodeUpstreamApiKeyEntry {

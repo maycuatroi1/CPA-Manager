@@ -219,6 +219,11 @@
     "delete_confirm": "確定要刪除這個 API 金鑰嗎？"
   },
   "ai_providers": {
+    "key_name_label": "名稱",
+    "key_name_placeholder": "例如：團隊帳號、個人 Max",
+    "key_name_hint": "可選的顯示名稱，儲存在 Usage Service 中（不寫入 CPA 設定）。",
+    "key_name_unavailable": "需要 Usage Service；請在設定頁面連線後再為金鑰命名。",
+    "key_name_save_failed": "設定已儲存，但金鑰名稱儲存失敗",
     "title": "AI 供應商設定",
     "gemini_title": "Gemini API 金鑰",
     "gemini_add_button": "新增金鑰",

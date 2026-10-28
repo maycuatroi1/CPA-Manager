@@ -221,6 +221,11 @@
     "delete_confirm": "Are you sure you want to delete this API key?"
   },
   "ai_providers": {
+    "key_name_label": "Name",
+    "key_name_placeholder": "e.g. Team account, Personal Max",
+    "key_name_hint": "Optional display name, saved in Usage Service (not in CPA config).",
+    "key_name_unavailable": "Requires Usage Service; connect it under Configuration to name keys.",
+    "key_name_save_failed": "Config saved, but the key name could not be saved",
     "title": "AI Providers Configuration",
     "gemini_title": "Gemini API Keys",
     "gemini_add_button": "Add Key",

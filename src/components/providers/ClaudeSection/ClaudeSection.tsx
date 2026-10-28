@@ -1,5 +1,6 @@
 import { Fragment, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useProviderKeyNames } from '@/hooks/useProviderKeyNames';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
@@ -42,6 +43,7 @@ export function ClaudeSection({
   onToggle,
 }: ClaudeSectionProps) {
   const { t } = useTranslation();
+  const { getName: getKeyName } = useProviderKeyNames();
   const actionsDisabled = disableControls || loading || isSwitching;
   const toggleDisabled = disableControls || loading || isSwitching;
 
@@ -111,7 +113,9 @@ export function ClaudeSection({
 
             return (
               <Fragment>
-                <div className="item-title">{t('ai_providers.claude_item_title')}</div>
+                <div className="item-title">
+                  {getKeyName('claude', item.apiKey) || t('ai_providers.claude_item_title')}
+                </div>
                 <div className={styles.fieldRow}>
                   <span className={styles.fieldLabel}>{t('common.api_key')}:</span>
                   <span className={styles.fieldValue}>{maskApiKey(item.apiKey)}</span>

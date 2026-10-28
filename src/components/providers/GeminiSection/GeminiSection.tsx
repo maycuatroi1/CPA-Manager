@@ -1,5 +1,6 @@
 import { Fragment, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useProviderKeyNames } from '@/hooks/useProviderKeyNames';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
@@ -42,6 +43,7 @@ export function GeminiSection({
   onToggle,
 }: GeminiSectionProps) {
   const { t } = useTranslation();
+  const { getName: getKeyName } = useProviderKeyNames();
   const actionsDisabled = disableControls || loading || isSwitching;
   const toggleDisabled = disableControls || loading || isSwitching;
 
@@ -112,7 +114,8 @@ export function GeminiSection({
             return (
               <Fragment>
                 <div className="item-title">
-                  {t('ai_providers.gemini_item_title')} #{index + 1}
+                  {getKeyName('gemini', item.apiKey) ||
+                    `${t('ai_providers.gemini_item_title')} #${index + 1}`}
                 </div>
                 <div className={styles.fieldRow}>
                   <span className={styles.fieldLabel}>{t('common.api_key')}:</span>

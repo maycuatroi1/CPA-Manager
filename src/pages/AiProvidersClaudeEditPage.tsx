@@ -14,6 +14,7 @@ import { apiCallApi, getApiCallErrorMessage } from '@/services/api';
 import { useNotificationStore } from '@/stores';
 import { buildHeaderObject } from '@/utils/headers';
 import { buildClaudeMessagesEndpoint, parseTextList } from '@/components/providers/utils';
+import { ProviderKeyNameInput } from '@/components/providers/ProviderKeyNameInput';
 import type { ClaudeEditOutletContext } from './AiProvidersClaudeEditLayout';
 import styles from './AiProvidersPage.module.scss';
 import layoutStyles from './AiProvidersEditLayout.module.scss';
@@ -54,6 +55,7 @@ export function AiProvidersClaudeEditPage() {
     saving,
     form,
     setForm,
+    keyName,
     testModel,
     setTestModel,
     testStatus,
@@ -307,6 +309,10 @@ export function AiProvidersClaudeEditPage() {
               label={t('ai_providers.claude_add_modal_key_label')}
               value={form.apiKey}
               onChange={(e) => setForm((prev) => ({ ...prev, apiKey: e.target.value }))}
+              disabled={saving || disableControls || isTesting}
+            />
+            <ProviderKeyNameInput
+              draft={keyName}
               disabled={saving || disableControls || isTesting}
             />
             <Input

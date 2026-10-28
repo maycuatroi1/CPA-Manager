@@ -204,6 +204,12 @@ func (s *Store) init() error {
 			alias text not null,
 			updated_at_ms integer not null
 		)`,
+		`create table if not exists provider_key_names (
+			key_hash text primary key,
+			provider text not null,
+			name text not null,
+			updated_at_ms integer not null
+		)`,
 		`create table if not exists api_key_limits (
 			api_key_hash text primary key,
 			limit_type text not null default 'token',

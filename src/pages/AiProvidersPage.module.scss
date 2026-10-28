@@ -1228,6 +1228,19 @@ $openai-toolbar-control-height: 36px;
   border-radius: $radius-md;
 }
 
+// Extra "name" column, shown only when Usage Service can store key names
+.keyTableWithName .keyTableHeader,
+.keyTableWithName .keyTableRow {
+  grid-template-columns: 46px 56px minmax(160px, 0.9fr) minmax(220px, 1.4fr) minmax(200px, 1.1fr) 180px;
+  min-width: 940px;
+}
+
+.keyTableColName {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
 // 表头
 .keyTableHeader {
   display: grid;

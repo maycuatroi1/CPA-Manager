@@ -219,6 +219,11 @@
     "delete_confirm": "Удалить этот API-ключ?"
   },
   "ai_providers": {
+    "key_name_label": "Название",
+    "key_name_placeholder": "напр. Командный аккаунт, Личный Max",
+    "key_name_hint": "Необязательное отображаемое имя, хранится в Usage Service (не в конфиге CPA).",
+    "key_name_unavailable": "Требуется Usage Service; подключите его в разделе Конфигурация.",
+    "key_name_save_failed": "Конфигурация сохранена, но название ключа сохранить не удалось",
     "title": "Конфигурация AI-провайдеров",
     "gemini_title": "API-ключи Gemini",
     "gemini_add_button": "Добавить ключ",
