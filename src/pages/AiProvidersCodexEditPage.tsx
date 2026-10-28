@@ -11,6 +11,8 @@ import { SelectionCheckbox } from '@/components/ui/SelectionCheckbox';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import { useEdgeSwipeBack } from '@/hooks/useEdgeSwipeBack';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
+import { useProviderKeyNameDraft } from '@/hooks/useProviderKeyNames';
+import { ProviderKeyNameInput } from '@/components/providers/ProviderKeyNameInput';
 import { SecondaryScreenShell } from '@/components/common/SecondaryScreenShell';
 import { modelsApi, providersApi } from '@/services/api';
 import { useAuthStore, useConfigStore, useNotificationStore } from '@/stores';
@@ -130,6 +132,7 @@ export function AiProvidersCodexEditPage() {
   }, [configs, editIndex]);
 
   const invalidIndex = editIndex !== null && !initialData;
+  const keyName = useProviderKeyNameDraft('codex', initialData?.apiKey ?? '');
 
   const title =
     editIndex !== null
@@ -237,7 +240,8 @@ export function AiProvidersCodexEditPage() {
     baseline.proxyUrl !== String(form.proxyUrl ?? '').trim() ||
     isHeadersDirty ||
     isModelsDirty ||
-    isExcludedModelsDirty;
+    isExcludedModelsDirty ||
+    keyName.isDirty;
   const canGuard = !loading && !saving && !invalidIndexParam && !invalidIndex;
 
   const { allowNextNavigation } = useUnsavedChangesGuard({
@@ -465,6 +469,12 @@ export function AiProvidersCodexEditPage() {
       await providersApi.saveCodexConfigs(nextList);
       updateConfigValue('codex-api-key', nextList);
       clearCache('codex-api-key');
+      try {
+        await keyName.commit(payload.apiKey);
+      } catch (nameErr: unknown) {
+        const nameMessage = nameErr instanceof Error ? nameErr.message : '';
+        showNotification(`${t('ai_providers.key_name_save_failed')}: ${nameMessage}`, 'warning');
+      }
       showNotification(
         editIndex !== null
           ? t('notification.codex_config_updated')
@@ -489,6 +499,7 @@ export function AiProvidersCodexEditPage() {
     editIndex,
     form,
     handleBack,
+    keyName,
     showNotification,
     t,
     updateConfigValue,
@@ -550,6 +561,7 @@ export function AiProvidersCodexEditPage() {
               onChange={(e) => setForm((prev) => ({ ...prev, apiKey: e.target.value }))}
               disabled={disableControls || saving}
             />
+            <ProviderKeyNameInput draft={keyName} disabled={disableControls || saving} />
             <Input
               label={t('ai_providers.priority_label')}
               hint={t('ai_providers.priority_hint')}

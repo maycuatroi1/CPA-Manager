@@ -9,6 +9,8 @@ import { ModelInputList } from '@/components/ui/ModelInputList';
 import { modelsToEntries } from '@/components/ui/modelInputListUtils';
 import { useEdgeSwipeBack } from '@/hooks/useEdgeSwipeBack';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
+import { useProviderKeyNameDraft } from '@/hooks/useProviderKeyNames';
+import { ProviderKeyNameInput } from '@/components/providers/ProviderKeyNameInput';
 import { SecondaryScreenShell } from '@/components/common/SecondaryScreenShell';
 import { providersApi } from '@/services/api';
 import { useAuthStore, useConfigStore, useNotificationStore } from '@/stores';
@@ -102,6 +104,7 @@ export function AiProvidersVertexEditPage() {
   }, [configs, editIndex]);
 
   const invalidIndex = editIndex !== null && !initialData;
+  const keyName = useProviderKeyNameDraft('vertex', initialData?.apiKey ?? '');
 
   const title =
     editIndex !== null ? t('ai_providers.vertex_edit_modal_title') : t('ai_providers.vertex_add_modal_title');
@@ -215,7 +218,8 @@ export function AiProvidersVertexEditPage() {
     baseline.proxyUrl !== String(form.proxyUrl ?? '').trim() ||
     isHeadersDirty ||
     isModelsDirty ||
-    isExcludedModelsDirty;
+    isExcludedModelsDirty ||
+    keyName.isDirty;
   const canGuard = !loading && !saving && !invalidIndexParam && !invalidIndex;
 
   const { allowNextNavigation } = useUnsavedChangesGuard({
@@ -269,6 +273,12 @@ export function AiProvidersVertexEditPage() {
       await providersApi.saveVertexConfigs(nextList);
       updateConfigValue('vertex-api-key', nextList);
       clearCache('vertex-api-key');
+      try {
+        await keyName.commit(payload.apiKey);
+      } catch (nameErr: unknown) {
+        const nameMessage = nameErr instanceof Error ? nameErr.message : '';
+        showNotification(`${t('ai_providers.key_name_save_failed')}: ${nameMessage}`, 'warning');
+      }
       showNotification(
         editIndex !== null ? t('notification.vertex_config_updated') : t('notification.vertex_config_added'),
         'success'
@@ -291,6 +301,7 @@ export function AiProvidersVertexEditPage() {
     editIndex,
     form,
     handleBack,
+    keyName,
     showNotification,
     t,
     updateConfigValue,
@@ -343,6 +354,7 @@ export function AiProvidersVertexEditPage() {
               onChange={(e) => setForm((prev) => ({ ...prev, apiKey: e.target.value }))}
               disabled={disableControls || saving}
             />
+            <ProviderKeyNameInput draft={keyName} disabled={disableControls || saving} />
             <Input
               label={t('ai_providers.prefix_label')}
               placeholder={t('ai_providers.prefix_placeholder')}

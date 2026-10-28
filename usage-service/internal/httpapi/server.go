@@ -124,6 +124,10 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		s.withCORS(s.handleAPIKeyAliases)(w, r)
 		return
 	}
+	if strings.HasPrefix(r.URL.Path, "/v0/management/provider-key-names") {
+		s.withCORS(s.handleProviderKeyNames)(w, r)
+		return
+	}
 	if strings.HasPrefix(r.URL.Path, "/v0/management/api-key-limits") {
 		s.withCORS(s.handleAPIKeyLimits)(w, r)
 		return

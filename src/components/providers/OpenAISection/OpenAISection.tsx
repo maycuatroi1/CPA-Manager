@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import { useProviderKeyNames } from '@/hooks/useProviderKeyNames';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -82,6 +83,7 @@ export function OpenAISection({
   onToggle,
 }: OpenAISectionProps) {
   const { t } = useTranslation();
+  const { getName: getKeyName } = useProviderKeyNames();
   const pageTransitionLayer = usePageTransitionLayer();
   const isTransitionAnimating = pageTransitionLayer?.isAnimating ?? false;
   const actionsDisabled = disableControls || loading || isSwitching;
@@ -589,6 +591,9 @@ export function OpenAISection({
                       className={styles.apiKeyEntryCard}
                     >
                       <span className={styles.apiKeyEntryIndex}>{entryIndex + 1}</span>
+                      {getKeyName('openai', entry.apiKey) && (
+                        <strong>{getKeyName('openai', entry.apiKey)}</strong>
+                      )}
                       <span className={styles.apiKeyEntryKey}>{maskApiKey(entry.apiKey)}</span>
                       {entry.proxyUrl && (
                         <span className={styles.apiKeyEntryProxy}>{entry.proxyUrl}</span>

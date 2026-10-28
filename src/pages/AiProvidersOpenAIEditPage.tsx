@@ -9,9 +9,11 @@ import { ModelInputList } from '@/components/ui/ModelInputList';
 import { Select } from '@/components/ui/Select';
 import { SecondaryScreenShell } from '@/components/common/SecondaryScreenShell';
 import { useEdgeSwipeBack } from '@/hooks/useEdgeSwipeBack';
+import { useProviderKeyNames } from '@/hooks/useProviderKeyNames';
 import { useNotificationStore } from '@/stores';
 import { apiCallApi, getApiCallErrorMessage } from '@/services/api';
 import type { ApiKeyEntry } from '@/types';
+import type { OpenAIFormApiKeyEntry } from '@/components/providers/types';
 import { buildHeaderObject, hasHeader } from '@/utils/headers';
 import { buildApiKeyEntry, buildOpenAIChatCompletionsEndpoint } from '@/components/providers/utils';
 import type { OpenAIEditOutletContext } from './AiProvidersOpenAIEditLayout';
@@ -95,6 +97,7 @@ function StatusIcon({ status }: { status: KeyTestStatus['status'] }) {
 
 export function AiProvidersOpenAIEditPage() {
   const { t } = useTranslation();
+  const { getName: getKeyName, available: keyNamesAvailable } = useProviderKeyNames();
   const navigate = useNavigate();
   const { showNotification } = useNotificationStore();
   const {
@@ -367,11 +370,25 @@ export function AiProvidersOpenAIEditPage() {
     navigate('models');
   };
 
-  const renderKeyEntries = (entries: ApiKeyEntry[]) => {
-    const list = entries.length ? entries : [buildApiKeyEntry()];
+  const renderKeyEntries = (entries: OpenAIFormApiKeyEntry[]) => {
+    const list: OpenAIFormApiKeyEntry[] = entries.length ? entries : [buildApiKeyEntry()];
+    const resolveEntryName = (entry: OpenAIFormApiKeyEntry) =>
+      entry.displayName ?? getKeyName('openai', entry.apiKey);
 
-    const updateEntry = (idx: number, field: keyof ApiKeyEntry, value: string) => {
-      const next = list.map((entry, i) => (i === idx ? { ...entry, [field]: value } : entry));
+    const updateEntry = (
+      idx: number,
+      field: keyof ApiKeyEntry | 'displayName',
+      value: string
+    ) => {
+      const next = list.map((entry, i) => {
+        if (i !== idx) return entry;
+        // Changing the key would orphan its stored name; carry the current name along.
+        const carriedName =
+          field === 'apiKey' && entry.displayName === undefined && keyNamesAvailable
+            ? { displayName: getKeyName('openai', entry.apiKey) || undefined }
+            : {};
+        return { ...entry, ...carriedName, [field]: value };
+      });
       setForm((prev) => ({ ...prev, apiKeyEntries: next }));
       setDraftKeyTestStatus(idx, { status: 'idle', message: '' });
       setTestStatus('idle');
@@ -413,11 +430,20 @@ export function AiProvidersOpenAIEditPage() {
             {t('ai_providers.openai_keys_add_btn')}
           </Button>
         </div>
-        <div className={styles.keyTableShell}>
+        <div
+          className={
+            keyNamesAvailable
+              ? `${styles.keyTableShell} ${styles.keyTableWithName}`
+              : styles.keyTableShell
+          }
+        >
           {/* 表头 */}
           <div className={styles.keyTableHeader}>
             <div className={styles.keyTableColIndex}>#</div>
             <div className={styles.keyTableColStatus}>{t('common.status')}</div>
+            {keyNamesAvailable && (
+              <div className={styles.keyTableColName}>{t('ai_providers.key_name_label')}</div>
+            )}
             <div className={styles.keyTableColKey}>{t('common.api_key')}</div>
             <div className={styles.keyTableColProxy}>{t('common.proxy_url')}</div>
             <div className={styles.keyTableColAction}>{t('common.action')}</div>
@@ -440,6 +466,20 @@ export function AiProvidersOpenAIEditPage() {
                 >
                   <StatusIcon status={keyStatus} />
                 </div>
+
+                {keyNamesAvailable && (
+                  <div className={styles.keyTableColName}>
+                    <input
+                      type="text"
+                      value={resolveEntryName(entry)}
+                      maxLength={120}
+                      onChange={(e) => updateEntry(index, 'displayName', e.target.value)}
+                      disabled={saving || disableControls || isTestingKeys}
+                      className={`input ${styles.keyTableInput}`}
+                      placeholder={t('ai_providers.key_name_placeholder')}
+                    />
+                  </div>
+                )}
 
                 {/* Key 输入框 */}
                 <div className={styles.keyTableColKey}>
